@@ -1,0 +1,3073 @@
+================================================================================
+DETAILING OF WORKFLOW
+================================================================================
+
+PERSONAL FINANCE & BUDGETING DASHBOARD
+Fully Expanded End-to-End Master Project Workflow
+
+
+PROJECT PROBLEM STATEMENT
+--------------------------------------------------------------------------------
+Personal Finance & Budgeting Dashboard: A CLI or basic GUI frontend attached to
+a persistent SQLite/File backend to track expenses.
+
+Required: Frontend/Backend separation, Transaction and Account classes, file
+serialization.
+
+
+
+################################################################################
+# PHASE 0 -- UNDERSTAND THE PROBLEM
+################################################################################
+
+
+0.1 Read exact problem statement
+--------------------------------------------------------------------------------
+First, we read the problem statement carefully from beginning to end without
+making implementation assumptions. We identify every noun, action, technology,
+and restriction mentioned in the statement. We then rewrite the statement in
+simple terms so that both team members have the same understanding of what must
+be built.
+
+Actions:
+    1. Read the complete problem statement.
+    2. Highlight every explicitly required component.
+    3. Identify what the words "dashboard," "frontend," "backend,"
+       "persistent," "SQLite/File," "Transaction," "Account," and
+       "serialization" imply.
+    4. Separate requirements from optional interpretations.
+    5. Write the requirements in our own words.
+    6. Review the interpretation with both project members so that both
+       members agree on what the project means.
+
+Output:
+    A clear, shared understanding of the problem statement.
+
+
+0.2 Extract mandatory requirements
+--------------------------------------------------------------------------------
+We now convert the problem statement into an explicit checklist of things that
+the final application must contain.
+
+Actions:
+    1. Record that the application must have a CLI or basic GUI frontend.
+    2. Record that persistent storage is required.
+    3. Decide on the persistent backend during the design phase. SQLite is the
+       planned primary choice unless the final project requirements or technical
+       constraints justify using file-based persistence instead.
+    4. Record that the application must track expenses and therefore must have
+       a transaction-management mechanism.
+    5. Record that frontend and backend responsibilities must be separated.
+    6. Record that Account and Transaction must be implemented as OOP classes.
+    7. Record that file serialization must be implemented.
+    8. Record that the overall implementation must remain consistent with the
+       OOP course requirements.
+    9. Convert these requirements into a project-completion checklist.
+
+Output:
+    A formal list of mandatory project requirements.
+
+
+0.3 Identify implied expectations
+--------------------------------------------------------------------------------
+Some requirements are not written as individual feature names but are naturally
+required for the system to function properly. We identify these before
+designing the project.
+
+Actions:
+    1. Determine that accounts need to be created and managed because
+       transactions must belong to some account.
+    2. Determine that transactions need income/expense information because
+       financial analysis requires both incoming and outgoing money.
+    3. Determine that categories are required to understand where money is
+       being spent.
+    4. Determine that budgeting requires budget limits and spending
+       comparisons.
+    5. Determine that a dashboard needs calculated financial summaries.
+    6. Determine that validation is needed so that incorrect user input does
+       not corrupt the data.
+    7. Determine that persistence requires reading previously stored data when
+       the application starts.
+    8. Determine that imported transactions need duplicate handling if
+       statement import is supported.
+    9. Determine that a usable application needs error handling and clear user
+       interaction.
+
+Output:
+    A list of functional expectations that are implied by the problem
+    statement.
+
+
+0.4 Define what the project is NOT required to do
+--------------------------------------------------------------------------------
+We explicitly identify functionality that is not necessary for satisfying the
+assignment so that the project does not become unnecessarily large.
+
+Actions:
+    1. Record that real-time bank synchronization is not required.
+    2. Record that the application will not ask users for internet-banking
+       passwords.
+    3. Record that direct bank API integration is not a core requirement.
+    4. Record that mobile-app development is not required.
+    5. Record that a large commercial banking website is not required.
+    6. Record that cloud deployment is not required.
+    7. Record that online payment processing is not required.
+    8. Record that advanced AI-based financial advice is not required.
+    9. Keep these items available as possible future-scope ideas instead of
+       treating them as current development tasks.
+
+Output:
+    A clearly defined boundary around the project.
+
+
+
+################################################################################
+# PHASE 1 -- FREEZE PROJECT SCOPE
+################################################################################
+
+
+1.1 Must-have features
+--------------------------------------------------------------------------------
+We define the smallest complete application that unquestionably satisfies the
+problem statement.
+
+Actions:
+    1. Include account creation and account management.
+    2. Include transaction creation and management.
+    3. Include manual expense entry.
+    4. Include manual income entry.
+    5. Include budget creation and management.
+    6. Include financial calculations.
+    7. Include a dashboard.
+    8. Include SQLite persistence.
+    9. Include frontend/backend separation.
+    10. Implement Account and Transaction as proper classes.
+    11. Implement file serialization.
+    12. Include input validation and basic error handling.
+
+Output:
+    The mandatory feature set.
+
+
+1.2 Should-have features
+--------------------------------------------------------------------------------
+We identify features that make the project stronger but should not prevent
+completion of the core project.
+
+Actions:
+    1. Add statement import only after the core MVP is complete.
+    2. Add CSV import if statement import is selected.
+    3. Add PDF statement import only if it is practical for the project.
+    4. Add duplicate detection only for imported transactions.
+    5. Add automatic rule-based transaction categorization if useful.
+    6. Add transaction search and filtering.
+    7. Add monthly reports.
+    8. Improve the CLI presentation and dashboard formatting.
+    9. Add backup and restore improvements around serialization.
+   10. Treat all of these features as optional enhancements, not MVP
+       requirements.
+
+Output:
+    A prioritized list of secondary features.
+
+
+1.3 Stretch features
+--------------------------------------------------------------------------------
+We identify advanced features that will only be developed after the core
+project is stable.
+
+Actions:
+    1. Consider adding a basic GUI after the CLI version is complete.
+    2. Consider adding charts.
+    3. Consider supporting additional bank-statement formats.
+    4. Consider recurring transactions.
+    5. Consider more advanced financial analytics.
+    6. Consider more sophisticated transaction categorization.
+
+Output:
+    A controlled stretch-feature list.
+
+
+1.4 Explicitly out-of-scope features
+--------------------------------------------------------------------------------
+We formally prevent the project from expanding into a commercial finance
+platform.
+
+Actions:
+    1. Exclude real-time bank synchronization from the required
+       implementation.
+    2. Exclude direct handling of online-banking passwords.
+    3. Exclude real bank authentication.
+    4. Exclude online payment processing.
+    5. Exclude production-level banking infrastructure.
+    6. Exclude large-scale cloud infrastructure.
+    7. Exclude features that require external financial authorization unless
+       they become a future extension.
+
+Output:
+    A fixed project boundary.
+
+
+1.5 Define final MVP
+--------------------------------------------------------------------------------
+We identify the version that must work even if optional features are removed.
+
+Actions:
+    1. Combine account management, transaction management, budgeting,
+       persistent storage, serialization, a CLI or basic GUI, and dashboard
+       functionality.
+    2. Verify that the MVP satisfies every explicit requirement.
+    3. Confirm that the MVP can be completed without statement import or other
+       advanced features.
+    4. Freeze this MVP as the minimum submission target.
+    5. Treat all additional features as secondary.
+
+Output:
+    A clearly defined Minimum Viable Product.
+
+
+
+################################################################################
+# PHASE 2 -- GIT + DEVELOPMENT ENVIRONMENT
+################################################################################
+
+
+2.1 Create GitHub repository
+--------------------------------------------------------------------------------
+We create the central GitHub repository before substantial development begins.
+
+Actions:
+    1. Sign in to GitHub.
+    2. Create a new repository for the project.
+    3. Give it a clear project name.
+    4. Add an initial README if appropriate.
+    5. Decide whether the repository should be public or private based on
+       course requirements.
+    6. Clone the repository to the development machines.
+    7. Verify that the local repository is connected to GitHub.
+    8. Perform an initial commit and push it.
+
+Output:
+    A working remote Git repository.
+
+
+2.2 Create initial README
+--------------------------------------------------------------------------------
+We create the first basic version of the project documentation.
+
+Actions:
+    1. Add the project title.
+    2. Add the problem statement.
+    3. Add a short explanation of what the project intends to do.
+    4. Add the names of the two project members.
+    5. Add a short list of initial planned features.
+    6. Save the README.
+    7. Commit it to Git.
+    8. Push the commit to GitHub.
+
+Output:
+    A visible initial project description in the repository.
+
+
+2.3 Create .gitignore
+--------------------------------------------------------------------------------
+We prevent generated and unnecessary files from being committed.
+
+Actions:
+    1. Identify compiled binaries that should not be committed.
+    2. Identify build-generated files.
+    3. Identify IDE-specific files.
+    4. Identify temporary files.
+    5. Decide whether the generated SQLite database should be committed or
+       generated locally.
+    6. Add the appropriate patterns to .gitignore.
+    7. Test Git status to verify that unwanted files are ignored.
+
+Output:
+    A clean Git repository that contains source material rather than
+    unnecessary generated files.
+
+
+2.4 Establish folder structure
+--------------------------------------------------------------------------------
+We create a directory structure that reflects the architecture we intend to
+build.
+
+Actions:
+    1. Create a source-code directory.
+    2. Create an include/header directory if separate headers are used.
+    3. Create a tests directory.
+    4. Create a documentation directory.
+    5. Create a data directory if required.
+    6. Create any future build configuration files.
+    7. Verify that the structure matches the intended architecture.
+
+Output:
+    A clean project skeleton.
+
+Example:
+
+    PersonalFinance/
+    |-- include/
+    |-- src/
+    |-- tests/
+    |-- docs/
+    |-- data/
+    |-- README.md
+    `-- .gitignore
+
+
+2.5 Decide branching strategy
+--------------------------------------------------------------------------------
+We establish a simple Git workflow suitable for two people.
+
+Actions:
+    1. Decide that main represents stable code.
+    2. Decide when feature branches will be created.
+    3. Decide how feature names will be written.
+    4. Decide how completed branches are reviewed.
+    5. Decide how branches will be merged.
+    6. Decide who checks the other person's work.
+    7. Decide that meaningful work should result in meaningful commits.
+    8. Avoid making the Git workflow unnecessarily complicated.
+
+Output:
+    A defined pair-programming Git workflow.
+
+
+2.6 Define pair-programming workflow
+--------------------------------------------------------------------------------
+We establish how both team members will contribute.
+
+Actions:
+    1. Divide work by logical modules rather than simply dividing files
+       randomly.
+    2. Give each member responsibility for certain features.
+    3. Make sure both members understand the overall architecture.
+    4. Use feature branches for separate work.
+    5. Review or test each other's important changes.
+    6. Merge completed modules into the stable branch.
+    7. Regularly synchronize both developers' repositories.
+    8. Maintain a meaningful contribution history from both members.
+
+Output:
+    A practical collaboration process.
+
+
+
+################################################################################
+# PHASE 3 -- REQUIREMENTS & USER WORKFLOWS
+################################################################################
+
+
+3.1 Account workflow
+--------------------------------------------------------------------------------
+We determine exactly what happens when a user creates, views, edits, or deletes
+an account.
+
+Actions:
+    1. User opens the account-management section.
+    2. User chooses to create an account.
+    3. Application asks for account details.
+    4. Input is validated.
+    5. An Account object is created.
+    6. Business logic confirms that the account is valid.
+    7. The repository stores the account in SQLite.
+    8. The application confirms successful creation.
+    9. Similar workflows are designed for viewing, updating, and deleting
+       accounts.
+
+Output:
+    A complete account-management workflow.
+
+
+3.2 Manual transaction workflow
+--------------------------------------------------------------------------------
+We define how a user quickly records an expense.
+
+Actions:
+    1. User chooses "Add Expense."
+    2. Application asks for amount, account, category, description, and date.
+    3. Application validates the entered information.
+    4. A Transaction object is created.
+    5. Business logic processes the transaction.
+    6. The repository stores the transaction.
+    7. SQLite persists the transaction.
+    8. The application displays a confirmation.
+
+Output:
+    A complete manual expense-entry workflow.
+
+
+3.3 Manual income workflow
+--------------------------------------------------------------------------------
+We define how incoming money is recorded.
+
+Actions:
+    1. User chooses "Add Income."
+    2. Application requests the required transaction information.
+    3. Application validates the information.
+    4. A Transaction object is created.
+    5. Business logic processes it as income.
+    6. The transaction is stored through the repository.
+    7. SQLite persists it.
+    8. The application confirms the operation.
+
+Output:
+    A complete income-entry workflow.
+
+
+3.4 Statement import workflow
+--------------------------------------------------------------------------------
+We define how a user can periodically import transactions from a downloaded
+bank statement.
+
+Actions:
+    1. User downloads a statement from their bank.
+    2. User selects the statement file in our application.
+    3. Application identifies the supported statement format.
+    4. Application reads the file.
+    5. The parser extracts transaction information.
+    6. The extracted information is converted into structured transaction data.
+    7. Transaction data is validated.
+    8. Possible duplicates are identified.
+    9. The user reviews or confirms the import when required.
+    10. Valid new transactions are converted into Transaction objects.
+    11. Transactions are sent into the common transaction-processing pipeline.
+    12. Valid transactions are saved to SQLite.
+
+Output:
+    A statement-import workflow that supplements manual entry.
+
+
+3.5 Duplicate detection workflow
+--------------------------------------------------------------------------------
+We prevent the same transaction from being stored twice.
+
+Actions:
+    1. Receive an imported transaction.
+    2. Search existing stored transactions.
+    3. Compare relevant identifying fields such as date, amount, account, and
+       description.
+    4. Determine whether there is no match, a possible duplicate, or an
+       obvious duplicate.
+    5. Mark possible duplicates for review.
+    6. Allow the application to skip or request confirmation according to the
+       final design.
+    7. Save only transactions that should actually be inserted.
+
+Output:
+    A duplicate-prevention mechanism.
+
+
+3.6 Category workflow
+--------------------------------------------------------------------------------
+We determine how transactions are assigned to categories.
+
+Actions:
+    1. Receive the transaction description.
+    2. Check whether the user has already supplied a category.
+    3. For imported transactions, compare the description against known rules.
+    4. Assign a matching category when appropriate.
+    5. Use a fallback such as Other when no rule matches.
+    6. Allow manual correction where necessary.
+    7. Store the final category with the transaction.
+
+Output:
+    A consistent transaction categorization process.
+
+
+3.7 Budget workflow
+--------------------------------------------------------------------------------
+We define how users create and monitor budgets.
+
+Actions:
+    1. User opens the budget section.
+    2. User selects a category.
+    3. User selects a month and year.
+    4. User enters a budget limit.
+    5. Application validates the budget.
+    6. A Budget object is created.
+    7. The budget is stored.
+    8. Later, transaction data is compared against the budget.
+    9. Spending is calculated.
+    10. Remaining budget is calculated.
+    11. Over-budget conditions are identified.
+
+Output:
+    A complete budget-management workflow.
+
+
+3.8 Dashboard workflow
+--------------------------------------------------------------------------------
+We define how financial information reaches the dashboard.
+
+Actions:
+    1. User opens the dashboard.
+    2. Application requests relevant data from the business layer.
+    3. Business logic retrieves transactions and budget information.
+    4. Income is calculated.
+    5. Expenses are calculated.
+    6. Savings are calculated.
+    7. Category spending is calculated.
+    8. Budget usage is calculated.
+    9. Over-budget categories are identified.
+    10. Results are formatted for display.
+    11. Frontend displays the results.
+
+Output:
+    A defined dashboard workflow.
+
+
+3.9 Reports workflow
+--------------------------------------------------------------------------------
+We define how users request financial reports.
+
+Actions:
+    1. User opens the reports section.
+    2. User selects a report type.
+    3. User selects a time range such as a month.
+    4. Business logic retrieves the relevant transactions.
+    5. Transactions are filtered.
+    6. Data is grouped or summarized as needed.
+    7. Totals are calculated.
+    8. Results are formatted.
+    9. The report is displayed.
+
+Output:
+    A defined reporting workflow.
+
+
+3.10 Backup/restore workflow
+--------------------------------------------------------------------------------
+We define how data is backed up and restored.
+
+Actions:
+    1. User chooses export/backup.
+    2. Application retrieves required application data.
+    3. Data is converted into a serializable format.
+    4. Serializer writes the data to a file.
+    5. User receives confirmation that the backup was created.
+    6. For restoration, the application reads the backup file.
+    7. Serializer converts the file representation back into application data.
+    8. Data is validated.
+    9. Data is restored into the appropriate storage mechanism.
+    10. Application confirms restoration.
+
+Output:
+    A complete backup/restore workflow.
+
+
+
+################################################################################
+# PHASE 4 -- SYSTEM ARCHITECTURE
+################################################################################
+
+
+4.1 Frontend layer
+--------------------------------------------------------------------------------
+We define everything that interacts directly with the user.
+
+Actions:
+    1. Decide whether the initial version will use CLI or basic GUI.
+    2. Define menus or screens.
+    3. Define what inputs each screen accepts.
+    4. Define what information each screen displays.
+    5. Ensure that frontend code primarily handles interaction and
+       presentation.
+    6. Avoid placing database operations directly throughout the frontend.
+    7. Connect frontend actions to business services.
+
+Output:
+    A defined frontend responsibility.
+
+
+4.2 Business logic layer
+--------------------------------------------------------------------------------
+We decide where financial rules and calculations belong.
+
+Actions:
+    1. Identify calculations required by the application.
+    2. Identify validation rules that are part of business behaviour.
+    3. Create service responsibilities for those operations.
+    4. Ensure calculations do not depend directly on user-interface code.
+    5. Ensure services obtain data through repositories rather than directly
+       embedding all database operations.
+    6. Define clear inputs and outputs for each service.
+
+Output:
+    A defined business-logic layer.
+
+
+4.3 Transaction ingestion layer
+--------------------------------------------------------------------------------
+We design a common path for transactions coming from different sources.
+
+Actions:
+    1. Identify manual entry as the core transaction source.
+    2. Identify CSV import as an optional statement source.
+    3. Identify PDF import as an optional statement source.
+    4. Define a common internal representation for transactions.
+    5. Ensure all sources eventually produce Transaction objects or transaction
+       data that can become Transaction objects.
+    6. Pass all sources through the same validation and processing logic.
+
+Output:
+    A unified transaction-ingestion design.
+
+
+4.4 Repository/data-access layer
+--------------------------------------------------------------------------------
+We define how the application accesses stored data.
+
+Actions:
+    1. Identify the entities that require persistence.
+    2. Create repository responsibilities for each major entity.
+    3. Define operations such as add, retrieve, update, and delete.
+    4. Ensure repositories handle data-access concerns instead of business
+       calculations.
+    5. Define the interface between repositories and the database manager.
+
+Output:
+    A clear data-access architecture.
+
+
+4.5 Database layer
+--------------------------------------------------------------------------------
+We define how SQLite is managed.
+
+Actions:
+    1. Decide where database connection management belongs.
+    2. Define how the database is opened.
+    3. Define how tables are initialized.
+    4. Define how SQL operations are executed.
+    5. Define how database errors are handled.
+    6. Define how the connection is closed or managed during program lifetime.
+
+Output:
+    A defined database layer.
+
+
+4.6 Serialization layer
+--------------------------------------------------------------------------------
+We define how file serialization is separated from normal database persistence.
+
+Actions:
+    1. Identify what application information needs to be serialized.
+    2. Decide what file representation will be used.
+    3. Define the conversion from object/data to file representation.
+    4. Define the conversion from file representation back to application
+       objects/data.
+    5. Keep serialization independent from the frontend.
+
+Output:
+    A defined serialization architecture.
+
+
+4.7 Final architecture mapping
+--------------------------------------------------------------------------------
+We combine all layers into one system.
+
+Actions:
+    1. Draw the frontend.
+    2. Place the business-logic layer below it.
+    3. Place transaction ingestion alongside the business flow.
+    4. Place repositories below business logic.
+    5. Place SQLite below repositories.
+    6. Place serialization as a separate path.
+    7. Show statement files entering through parser/importer components.
+    8. Connect everything with arrows showing data flow.
+    9. Review the diagram against the problem statement.
+
+Output:
+    The official system architecture diagram.
+
+
+
+################################################################################
+# PHASE 5 -- OOP DESIGN
+################################################################################
+
+
+5.1 Account class
+--------------------------------------------------------------------------------
+We design the Account class in detail.
+
+Actions:
+    1. Decide the responsibility of the class.
+    2. Identify the data that an account must store.
+    3. Choose suitable data types.
+    4. Decide which data must remain private.
+    5. Decide required constructors.
+    6. Decide required member functions.
+    7. Decide validation rules.
+    8. Decide which functions should only read data.
+    9. Review whether the class has too many responsibilities.
+    10. Finalize the class interface.
+
+Output:
+    A finalized Account class design.
+
+
+5.2 Transaction class
+--------------------------------------------------------------------------------
+We design the central transaction object.
+
+Actions:
+    1. Decide what a transaction represents.
+    2. Identify transaction ID.
+    3. Identify associated account.
+    4. Identify amount.
+    5. Identify income/expense type.
+    6. Identify category.
+    7. Identify description.
+    8. Identify date.
+    9. Choose appropriate data types.
+    10. Decide constructors.
+    11. Decide member functions.
+    12. Decide validation rules.
+    13. Decide how imported transactions will populate the class.
+    14. Review the class for unnecessary responsibilities.
+
+Output:
+    A finalized Transaction class design.
+
+
+5.3 Budget class
+--------------------------------------------------------------------------------
+We design the budget object as a project-level feature of the budgeting
+dashboard. The assignment explicitly requires Account and Transaction classes;
+Budget is an additional class chosen to support the budgeting functionality.
+
+Actions:
+    1. Decide what a budget represents.
+    2. Identify category.
+    3. Identify month and year.
+    4. Identify spending limit.
+    5. Decide appropriate data types.
+    6. Decide constructors.
+    7. Decide member functions.
+    8. Decide validation rules.
+    9. Keep budget data separate from transaction calculations where
+       appropriate.
+
+Output:
+    A finalized Budget class design.
+
+
+5.4 Supporting types
+--------------------------------------------------------------------------------
+We identify smaller concepts needed by the main classes.
+
+Actions:
+    1. Identify whether transaction type should be represented using an enum
+       or another appropriate type.
+    2. Identify account types if required.
+    3. Identify category representation.
+    4. Decide how dates are represented.
+    5. Avoid creating unnecessary classes simply for the sake of having more
+       classes.
+    6. Ensure each supporting type has a clear purpose.
+
+Output:
+    A set of supporting domain types.
+
+
+5.5 Service classes
+--------------------------------------------------------------------------------
+We define the classes that contain business operations.
+
+Actions:
+    1. Identify operations involving multiple domain objects.
+    2. Separate financial calculations from raw data storage.
+    3. Group related operations logically.
+    4. Define services such as finance analysis or reporting only where
+       required.
+    5. Decide which repository dependencies each service needs.
+    6. Ensure services do not contain frontend-specific code.
+
+Output:
+    A service-layer design.
+
+
+5.6 Repository classes
+--------------------------------------------------------------------------------
+We define classes responsible for persistent storage operations.
+
+Actions:
+    1. Identify the entity handled by each repository.
+    2. Define CRUD operations.
+    3. Define inputs and outputs.
+    4. Decide how repositories communicate with SQLite.
+    5. Ensure SQL-specific logic remains in the repository/data-access layer.
+    6. Avoid placing business calculations inside repositories.
+
+Output:
+    Repository class designs.
+
+
+5.7 Optional parser/importer classes
+--------------------------------------------------------------------------------
+If statement import is selected, we design classes that read external
+statement formats.
+
+Actions:
+    1. Define a general statement-import responsibility.
+    2. Define CSV parsing if implemented.
+    3. Define PDF parsing if implemented.
+    4. Determine what data each parser must extract.
+    5. Determine how parsing errors are handled.
+    6. Convert parsed rows into common transaction data.
+    7. Ensure parsers do not directly perform unrelated budget calculations.
+
+Output:
+    Statement-import architecture.
+
+
+5.8 Serializer class
+--------------------------------------------------------------------------------
+We design the serialization mechanism.
+
+Actions:
+    1. Identify which objects/data need serialization.
+    2. Decide how objects will be represented in the file.
+    3. Define serialization operations.
+    4. Define deserialization operations.
+    5. Determine how invalid backup files will be handled.
+    6. Determine how restored data will be validated.
+    7. Ensure serializer responsibilities remain separate from database
+       repositories.
+
+Output:
+    A finalized serializer design.
+
+
+5.9 Produce class diagram
+--------------------------------------------------------------------------------
+We now visually represent the OOP design.
+
+Actions:
+    1. Add the main domain classes.
+    2. Add service classes.
+    3. Add repository classes.
+    4. Add importer/parser classes.
+    5. Add serializer.
+    6. Show relationships.
+    7. Show relevant dependencies.
+    8. Review whether the diagram reflects actual planned code.
+    9. Update the diagram if the design changes.
+
+Output:
+    The project class diagram.
+
+
+
+################################################################################
+# PHASE 6 -- DATABASE DESIGN
+################################################################################
+
+
+6.1 Accounts table
+--------------------------------------------------------------------------------
+We design the database representation of accounts.
+
+Actions:
+    1. List all account attributes that must be persisted.
+    2. Convert each attribute into a column.
+    3. Choose SQL data types.
+    4. Select the primary key.
+    5. Determine required constraints.
+    6. Determine whether account names or other fields need uniqueness.
+    7. Validate that the table supports all planned account operations.
+
+Output:
+    Final accounts table design.
+
+
+6.2 Transactions table
+--------------------------------------------------------------------------------
+We design the database representation of transactions.
+
+Actions:
+    1. List every transaction attribute.
+    2. Convert attributes into columns.
+    3. Choose data types.
+    4. Define the transaction primary key.
+    5. Define the account foreign key.
+    6. Decide how transaction type is stored.
+    7. Decide how date is stored.
+    8. Add suitable constraints.
+    9. Verify that the table can represent both manual and imported
+       transactions.
+
+Output:
+    Final transactions table design.
+
+
+6.3 Budgets table
+--------------------------------------------------------------------------------
+We design the database representation of budgets.
+
+Actions:
+    1. Identify all budget attributes.
+    2. Convert them into columns.
+    3. Choose data types.
+    4. Define the budget primary key.
+    5. Define category/month/year relationships as required.
+    6. Add validation constraints.
+    7. Determine how duplicate monthly budgets should be prevented.
+
+Output:
+    Final budgets table design.
+
+
+6.4 Categories / supporting tables
+--------------------------------------------------------------------------------
+We determine whether categories need their own database table.
+
+Actions:
+    1. Determine whether categories are fixed or user-defined.
+    2. If fixed, decide whether a simple representation is sufficient.
+    3. If user-defined, determine whether a category table is necessary.
+    4. Identify relationships between categories and transactions.
+    5. Avoid introducing tables that do not provide a real benefit.
+
+Output:
+    Final category-storage strategy.
+
+
+6.5 Primary keys
+--------------------------------------------------------------------------------
+We determine unique identifiers.
+
+Actions:
+    1. Give each main entity a unique identifier.
+    2. Decide how identifiers are generated.
+    3. Ensure identifiers remain stable once assigned.
+    4. Ensure relationships can reference the correct records.
+
+Output:
+    Primary-key strategy.
+
+
+6.6 Foreign keys
+--------------------------------------------------------------------------------
+We define relationships between tables.
+
+Actions:
+    1. Identify that transactions belong to accounts.
+    2. Define the transaction-to-account relationship.
+    3. Determine whether budgets need category/account relationships.
+    4. Add foreign-key constraints where appropriate.
+    5. Decide the behaviour when a referenced object is deleted.
+
+Output:
+    Foreign-key design.
+
+
+6.7 Constraints
+--------------------------------------------------------------------------------
+We add database-level protection against invalid data.
+
+Actions:
+    1. Add primary keys.
+    2. Add foreign keys.
+    3. Add NOT NULL where necessary.
+    4. Add UNIQUE where appropriate.
+    5. Add CHECK constraints where appropriate.
+    6. Test that invalid records are rejected.
+
+Output:
+    A protected database schema.
+
+
+6.8 Indexing / query design
+--------------------------------------------------------------------------------
+We identify queries that may need efficient retrieval.
+
+Actions:
+    1. Identify frequent transaction lookups.
+    2. Identify filtering by account.
+    3. Identify filtering by date.
+    4. Identify filtering by category.
+    5. Identify duplicate-detection queries.
+    6. Add indexes only where useful.
+    7. Avoid premature complexity.
+
+Output:
+    A practical database-query design.
+
+
+
+################################################################################
+# PHASE 7 -- CORE OOP IMPLEMENTATION
+################################################################################
+
+
+7.1 Implement Account
+--------------------------------------------------------------------------------
+We now convert the finalized design into C++ code.
+
+Actions:
+    1. Create the header file if using separated declarations and
+       implementations.
+    2. Define the class.
+    3. Declare private data members.
+    4. Declare constructors.
+    5. Implement constructors.
+    6. Implement required member functions.
+    7. Add validation where appropriate.
+    8. Compile the class independently.
+    9. Create small tests.
+    10. Fix compilation or logic issues.
+    11. Commit the completed module.
+
+Output:
+    A tested Account implementation.
+
+
+7.2 Implement Transaction
+--------------------------------------------------------------------------------
+Actions:
+    1. Create the transaction class files.
+    2. Define private members.
+    3. Implement constructors.
+    4. Implement access functions.
+    5. Implement required behaviour.
+    6. Support both income and expense transactions.
+    7. Validate amounts and required fields.
+    8. Test manual construction.
+    9. Test edge cases.
+    10. Commit the working version.
+
+Output:
+    A tested Transaction implementation.
+
+
+7.3 Implement Budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Create the budget class.
+    2. Add private members.
+    3. Implement constructors.
+    4. Implement methods.
+    5. Validate limits and required information.
+    6. Compile independently.
+    7. Test normal and invalid values.
+    8. Commit the working version.
+
+Output:
+    A tested Budget implementation.
+
+
+7.4 Implement supporting domain classes/types
+--------------------------------------------------------------------------------
+Actions:
+    1. Implement only the supporting types finalized during design.
+    2. Compile each component.
+    3. Test interactions between domain objects where needed.
+    4. Keep responsibilities separated.
+    5. Commit stable components.
+
+Output:
+    A working domain-model layer.
+
+
+
+################################################################################
+# PHASE 8 -- SQLITE BACKEND
+################################################################################
+
+
+8.1 Database connection
+--------------------------------------------------------------------------------
+We establish communication between C++ and SQLite.
+
+Actions:
+    1. Choose the SQLite library/interface available in the development
+       environment.
+    2. Add the required build configuration.
+    3. Create the database manager component.
+    4. Implement opening the database.
+    5. Handle connection errors.
+    6. Implement safe closing/cleanup behaviour.
+    7. Create a small connectivity test.
+    8. Commit the working database connection.
+
+Output:
+    A working C++ <-> SQLite connection.
+
+
+8.2 Schema creation
+--------------------------------------------------------------------------------
+Actions:
+    1. Translate the finalized database design into SQL.
+    2. Create account tables.
+    3. Create transaction tables.
+    4. Create budget tables.
+    5. Add constraints.
+    6. Add relationships.
+    7. Run the schema creation.
+    8. Verify tables using SQLite tools or queries.
+    9. Fix schema errors.
+    10. Commit the schema.
+
+Output:
+    A functioning SQLite schema.
+
+
+8.3 CRUD operations
+--------------------------------------------------------------------------------
+We implement the fundamental database operations.
+
+Actions:
+    1. Implement insert operations.
+    2. Implement retrieval operations.
+    3. Implement update operations.
+    4. Implement delete operations.
+    5. Test each operation independently.
+    6. Test invalid identifiers.
+    7. Test constraint violations.
+    8. Confirm that stored records can be read back correctly.
+
+Output:
+    Working database CRUD functionality.
+
+
+8.4 Repositories
+--------------------------------------------------------------------------------
+Actions:
+    1. Create the account repository.
+    2. Connect it to the database manager.
+    3. Implement account CRUD operations.
+    4. Test the account repository.
+    5. Create the transaction repository.
+    6. Implement transaction CRUD operations.
+    7. Test the transaction repository.
+    8. Create the budget repository.
+    9. Implement budget CRUD operations.
+    10. Test the budget repository.
+    11. Confirm that repositories do not contain unnecessary business logic.
+
+Output:
+    A working repository/data-access layer.
+
+
+8.5 Persistent storage
+--------------------------------------------------------------------------------
+We confirm that data survives application restarts.
+
+Actions:
+    1. Create a record through the application.
+    2. Confirm it is written to SQLite.
+    3. Close the application.
+    4. Reopen the application.
+    5. Retrieve the record.
+    6. Verify that the original data remains available.
+    7. Repeat the test with accounts, transactions, and budgets.
+
+Output:
+    Proof of persistent storage.
+
+
+
+################################################################################
+# PHASE 9 -- TRANSACTION INPUT SYSTEM
+################################################################################
+
+NOTE:
+    Manual transaction entry is part of the core MVP.
+    Bank-statement import is optional and must not block completion of the MVP.
+    The statement-import sections below are implemented only if time, project
+    scope, and technical feasibility allow it.
+
+
+--------------------------------------------------------------------------------
+A. QUICK MANUAL ENTRY
+--------------------------------------------------------------------------------
+
+
+9A.1 Add expense
+--------------------------------------------------------------------------------
+Actions:
+    1. Add "Add Expense" to the frontend.
+    2. Ask the user for amount.
+    3. Ask the user for account.
+    4. Ask for category.
+    5. Ask for description.
+    6. Ask for date.
+    7. Validate all fields.
+    8. Create the Transaction object.
+    9. Pass the object to business logic.
+    10. Save it through the transaction repository.
+    11. Display confirmation.
+
+Output:
+    Working quick expense entry.
+
+
+9A.2 Add income
+--------------------------------------------------------------------------------
+Actions:
+    1. Add "Add Income" to the frontend.
+    2. Ask for required information.
+    3. Validate the information.
+    4. Create an income transaction.
+    5. Send it through the common transaction pipeline.
+    6. Save it.
+    7. Confirm success.
+
+Output:
+    Working income entry.
+
+
+9A.3 Validation
+--------------------------------------------------------------------------------
+Actions:
+    1. Reject zero or invalid amounts where appropriate.
+    2. Reject invalid account identifiers.
+    3. Reject missing required fields.
+    4. Validate dates.
+    5. Validate transaction type.
+    6. Display understandable error messages.
+    7. Ask the user to re-enter incorrect values.
+
+Output:
+    Reliable manual-entry validation.
+
+
+--------------------------------------------------------------------------------
+B. OPTIONAL BANK STATEMENT IMPORT
+--------------------------------------------------------------------------------
+This section is an enhancement. It is not required to complete the core MVP.
+
+
+9B.1 Accept statement file
+--------------------------------------------------------------------------------
+Actions:
+    1. Add an import option to the application.
+    2. Allow the user to specify/select the statement file.
+    3. Verify that the file exists.
+    4. Verify that its extension/type is supported.
+    5. Display a useful error when the format is unsupported.
+
+Output:
+    A statement-file input mechanism.
+
+
+9B.2 Determine supported format
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify whether the uploaded file is CSV, PDF, or another supported
+       format.
+    2. Select the corresponding parser.
+    3. Reject unsupported formats clearly.
+    4. Keep the format-detection logic separate from transaction-processing
+       logic.
+
+Output:
+    A format-selection mechanism.
+
+
+9B.3 Extract transaction rows
+--------------------------------------------------------------------------------
+Actions:
+    1. Open the statement using the chosen parser.
+    2. Locate the table or transaction section.
+    3. Read each relevant row.
+    4. Ignore headers and irrelevant information.
+    5. Store extracted rows temporarily.
+    6. Record parsing errors rather than silently producing incorrect
+       transactions.
+
+Output:
+    Extracted transaction rows.
+
+
+9B.4 Parse dates
+--------------------------------------------------------------------------------
+Actions:
+    1. Locate the statement date field.
+    2. Read its value.
+    3. Convert it into the application's standard date representation.
+    4. Validate that the date is legitimate.
+    5. Reject or flag invalid dates.
+
+Output:
+    Normalized transaction dates.
+
+
+9B.5 Parse amounts
+--------------------------------------------------------------------------------
+Actions:
+    1. Locate debit/credit amounts.
+    2. Remove formatting that is not part of the numeric value.
+    3. Convert the value into the application's numeric amount representation.
+    4. Determine whether the amount is an income or expense based on the
+       statement's structure.
+    5. Validate the resulting amount.
+
+Output:
+    Normalized transaction amounts and types.
+
+
+9B.6 Parse descriptions
+--------------------------------------------------------------------------------
+Actions:
+    1. Extract the transaction description.
+    2. Remove unnecessary whitespace or formatting.
+    3. Preserve useful merchant/reference information.
+    4. Store the normalized description.
+
+Output:
+    Clean transaction descriptions.
+
+
+9B.7 Determine debit/credit
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify how the statement represents debits and credits.
+    2. Map the statement's representation to the application's standard
+       transaction type.
+    3. Treat debit as expense and credit as income where appropriate.
+    4. Test the mapping against sample transactions.
+    5. Handle unknown or ambiguous transaction rows safely.
+
+Output:
+    A consistent income/expense classification.
+
+
+9B.8 Convert to Transaction objects
+--------------------------------------------------------------------------------
+Actions:
+    1. Take the parsed transaction information.
+    2. Match it to an application account.
+    3. Assign the normalized amount.
+    4. Assign transaction type.
+    5. Assign category when possible.
+    6. Assign description and date.
+    7. Construct Transaction objects.
+    8. Pass the objects to the common processing pipeline.
+
+Output:
+    Imported transactions represented as application objects.
+
+
+9B.9 Send to business logic
+--------------------------------------------------------------------------------
+Actions:
+    1. Send imported transactions to the transaction-processing service.
+    2. Validate them again using application rules.
+    3. Perform duplicate detection.
+    4. Perform categorization.
+    5. Ask for confirmation where the design requires it.
+    6. Send approved transactions to the repository.
+    7. Store them in SQLite.
+
+Output:
+    Imported transactions become part of the normal application data.
+
+
+
+################################################################################
+# PHASE 10 -- TRANSACTION PROCESSING
+################################################################################
+
+
+10.1 Validation
+--------------------------------------------------------------------------------
+Actions:
+    1. Receive the transaction.
+    2. Verify that required fields exist.
+    3. Validate amount.
+    4. Validate account.
+    5. Validate transaction type.
+    6. Validate category where required.
+    7. Validate date.
+    8. Reject invalid transactions before database insertion.
+
+Output:
+    Validated transaction data.
+
+
+10.2 Transaction normalization
+--------------------------------------------------------------------------------
+Actions:
+    1. Standardize transaction types.
+    2. Standardize dates.
+    3. Standardize amount representation.
+    4. Clean transaction descriptions.
+    5. Normalize category values.
+    6. Ensure all sources produce a consistent internal structure.
+
+Output:
+    Normalized transaction objects.
+
+
+10.3 Category detection
+--------------------------------------------------------------------------------
+Actions:
+    1. Check whether the transaction already has a category.
+    2. If not, compare the description with known category rules.
+    3. Assign the matching category.
+    4. Use a fallback category when no rule applies.
+    5. Allow manual correction if necessary.
+    6. Save the final category.
+
+Output:
+    Categorized transactions.
+
+
+10.4 Duplicate detection
+--------------------------------------------------------------------------------
+Actions:
+    1. Receive a new transaction.
+    2. Search the database for potentially matching records.
+    3. Compare date.
+    4. Compare amount.
+    5. Compare account.
+    6. Compare description.
+    7. Determine whether the match is exact or only possible.
+    8. Mark possible duplicates.
+    9. Skip or request confirmation according to the defined application
+       behaviour.
+
+Output:
+    Duplicate-safe transaction processing.
+
+
+10.5 Duplicate confirmation
+--------------------------------------------------------------------------------
+Actions:
+    1. Display possible duplicate information to the user.
+    2. Show enough details to compare the two transactions.
+    3. Ask whether the new transaction should be imported.
+    4. Skip it if the user confirms it is a duplicate.
+    5. Save it if the user confirms it is a legitimate separate transaction.
+
+Output:
+    Controlled duplicate handling.
+
+
+10.6 Final database insertion
+--------------------------------------------------------------------------------
+Actions:
+    1. Receive a fully validated, normalized, categorized, non-duplicate
+       transaction.
+    2. Send it to the transaction repository.
+    3. Execute the database insertion.
+    4. Check whether the insertion succeeded.
+    5. Report errors if the database rejects the record.
+    6. Confirm successful storage.
+
+Output:
+    A complete transaction-ingestion pipeline.
+
+
+
+################################################################################
+# PHASE 11 -- BUSINESS LOGIC
+################################################################################
+
+
+11.1 Account balance calculation
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve the account's initial balance.
+    2. Retrieve relevant income transactions.
+    3. Retrieve relevant expense transactions.
+    4. Add income.
+    5. Subtract expenses.
+    6. Produce the current balance.
+    7. Return the calculated value to the frontend/reporting layer.
+
+Output:
+    Current account balance calculation.
+
+
+11.2 Total income
+--------------------------------------------------------------------------------
+Actions:
+    1. Select the requested time period.
+    2. Retrieve income transactions.
+    3. Sum their amounts.
+    4. Return the total.
+
+Output:
+    Income calculation.
+
+
+11.3 Total expenses
+--------------------------------------------------------------------------------
+Actions:
+    1. Select the requested time period.
+    2. Retrieve expense transactions.
+    3. Sum their amounts.
+    4. Return the total.
+
+Output:
+    Expense calculation.
+
+
+11.4 Net savings
+--------------------------------------------------------------------------------
+Actions:
+    1. Calculate total income.
+    2. Calculate total expenses.
+    3. Subtract expenses from income.
+    4. Return the resulting savings value.
+
+Output:
+    Net-savings calculation.
+
+
+11.5 Category-wise spending
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve expenses for the selected period.
+    2. Group them by category.
+    3. Sum amounts within each category.
+    4. Sort or format the categories as appropriate.
+    5. Return the category totals.
+
+Output:
+    Category-spending analysis.
+
+
+11.6 Monthly spending
+--------------------------------------------------------------------------------
+Actions:
+    1. Receive the selected month and year.
+    2. Retrieve transactions for that period.
+    3. Separate income and expenses.
+    4. Calculate totals.
+    5. Return the monthly summary.
+
+Output:
+    Monthly financial analysis.
+
+
+11.7 Budget usage
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve the budget for a category.
+    2. Retrieve actual spending for that category and period.
+    3. Calculate the amount spent.
+    4. Compare it with the budget limit.
+    5. Calculate the percentage used.
+    6. Return the result.
+
+Output:
+    Budget-usage calculation.
+
+
+11.8 Remaining budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve budget limit.
+    2. Retrieve actual spending.
+    3. Subtract spending from the budget.
+    4. Return the remaining amount.
+    5. Handle negative results as over-budget values where appropriate.
+
+Output:
+    Remaining-budget calculation.
+
+
+11.9 Over-budget detection
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve the budget limit.
+    2. Retrieve current spending.
+    3. Compare spending with the limit.
+    4. Mark the budget as within limit or over budget.
+    5. Calculate the over-budget amount when applicable.
+    6. Return the status.
+
+Output:
+    Budget-status calculation.
+
+
+
+################################################################################
+# PHASE 12 -- BUDGET SYSTEM
+################################################################################
+
+
+12.1 Create budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Add the budget-creation option.
+    2. Ask for category.
+    3. Ask for month and year.
+    4. Ask for spending limit.
+    5. Validate the values.
+    6. Create a Budget object.
+    7. Save it through the repository.
+    8. Confirm creation.
+
+Output:
+    Working budget creation.
+
+
+12.2 Edit budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Display existing budgets.
+    2. Ask the user to select one.
+    3. Retrieve the budget.
+    4. Ask for updated information.
+    5. Validate the changes.
+    6. Update the Budget object.
+    7. Save changes to SQLite.
+    8. Confirm the update.
+
+Output:
+    Working budget modification.
+
+
+12.3 Delete budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Display existing budgets.
+    2. Ask the user to choose one.
+    3. Confirm deletion if required.
+    4. Delete the corresponding record.
+    5. Confirm the operation.
+
+Output:
+    Working budget deletion.
+
+
+12.4 Calculate spending against budget
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve the selected budget.
+    2. Retrieve matching expense transactions.
+    3. Sum the transaction amounts.
+    4. Compare actual spending with the budget limit.
+    5. Return the comparison.
+
+Output:
+    Budget-vs-spending analysis.
+
+
+12.5 Budget percentage used
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve total budget.
+    2. Retrieve actual spending.
+    3. Calculate the percentage.
+    4. Handle edge cases such as zero budget appropriately.
+    5. Return the result.
+
+Output:
+    Budget-utilization percentage.
+
+
+12.6 Over-budget alerts
+--------------------------------------------------------------------------------
+Actions:
+    1. Calculate budget usage.
+    2. Check whether spending exceeds the limit.
+    3. Mark the budget as over budget.
+    4. Display the warning on the dashboard or budget screen.
+    5. Clearly show the excess amount.
+
+Output:
+    Budget alerts.
+
+
+
+################################################################################
+# PHASE 13 -- DASHBOARD / FRONTEND
+################################################################################
+
+
+13.1 Main menu
+--------------------------------------------------------------------------------
+Actions:
+    1. Create the main application entry screen.
+    2. Display all major features.
+    3. Assign each option a clear number or navigation mechanism.
+    4. Read user selection.
+    5. Validate the selection.
+    6. Route the user to the corresponding feature.
+    7. Provide a way to return to the main menu.
+
+Output:
+    A usable main navigation system.
+
+
+13.2 Account menu
+--------------------------------------------------------------------------------
+Actions:
+    1. Create the account submenu.
+    2. Add create-account option.
+    3. Add view-account option.
+    4. Add edit-account option.
+    5. Add delete-account option.
+    6. Connect each action to the corresponding service/repository.
+    7. Display success and error messages.
+
+Output:
+    Account-management frontend.
+
+
+13.3 Transaction menu
+--------------------------------------------------------------------------------
+Actions:
+    1. Create transaction submenu.
+    2. Add expense option.
+    3. Add income option.
+    4. Add transaction-list option.
+    5. Add edit/delete options if included.
+    6. Add search/filter options if included.
+    7. Connect actions to the transaction service.
+    8. Format transaction output clearly.
+
+Output:
+    Transaction-management frontend.
+
+
+13.4 Import menu
+--------------------------------------------------------------------------------
+Actions:
+    1. Add statement-import option.
+    2. Allow the user to select the file.
+    3. Display the number of transactions detected.
+    4. Display parsing errors where required.
+    5. Display possible duplicates.
+    6. Allow user confirmation.
+    7. Complete the import.
+    8. Display a summary of imported/skipped transactions.
+
+Output:
+    A usable statement-import frontend.
+
+
+13.5 Budget menu
+--------------------------------------------------------------------------------
+Actions:
+    1. Add budget-management options.
+    2. Allow creation.
+    3. Allow viewing.
+    4. Allow editing.
+    5. Allow deletion.
+    6. Display spending against each budget.
+    7. Display over-budget status.
+
+Output:
+    Budget-management frontend.
+
+
+13.6 Dashboard
+--------------------------------------------------------------------------------
+Actions:
+    1. Retrieve current financial data.
+    2. Display account balance.
+    3. Display total income.
+    4. Display total expenses.
+    5. Display savings.
+    6. Display top spending categories.
+    7. Display budget usage.
+    8. Display over-budget warnings.
+    9. Format all information clearly.
+
+Output:
+    A functional finance dashboard.
+
+
+13.7 Reports
+--------------------------------------------------------------------------------
+Actions:
+    1. Create a reports menu.
+    2. Allow the user to select report type.
+    3. Allow the user to select period.
+    4. Retrieve relevant data.
+    5. Run the corresponding business logic.
+    6. Display the result in a readable format.
+
+Output:
+    A usable reporting interface.
+
+
+13.8 Settings / utility functions
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify utilities that genuinely improve usability.
+    2. Add options such as backup, restore, or application information where
+       useful.
+    3. Keep utilities separate from core finance calculations.
+    4. Provide clean navigation back to the main menu.
+
+Output:
+    Supporting frontend functionality.
+
+
+
+################################################################################
+# PHASE 14 -- FILE SERIALIZATION
+################################################################################
+
+
+14.1 Serialize objects/data
+--------------------------------------------------------------------------------
+Actions:
+    1. Decide which application data will be serialized.
+    2. Retrieve that data.
+    3. Convert objects/data into the chosen file representation.
+    4. Preserve all information necessary for restoration.
+    5. Write the representation to the file.
+    6. Confirm successful output.
+
+Output:
+    Serialized application data.
+
+
+14.2 Export data
+--------------------------------------------------------------------------------
+Actions:
+    1. Add an export option.
+    2. Collect required application data.
+    3. Pass it to the serializer.
+    4. Create the backup file.
+    5. Confirm file creation.
+    6. Handle file-writing errors.
+
+Output:
+    Working export functionality.
+
+
+14.3 Define backup format
+--------------------------------------------------------------------------------
+Actions:
+    1. Decide which objects appear in the backup.
+    2. Decide the order of serialized sections.
+    3. Decide field separators or structural syntax.
+    4. Ensure values can be read unambiguously.
+    5. Include any metadata necessary for restoration.
+    6. Document the backup format.
+
+Output:
+    A defined serialization format.
+
+
+14.4 Import backup
+--------------------------------------------------------------------------------
+Actions:
+    1. Add an import/restore option.
+    2. Ask the user to select the backup file.
+    3. Verify that the file exists.
+    4. Open the file.
+    5. Validate its structure.
+    6. Pass it to the deserializer.
+    7. Handle invalid or corrupted files safely.
+
+Output:
+    Backup-file reading capability.
+
+
+14.5 Deserialize data
+--------------------------------------------------------------------------------
+Actions:
+    1. Read the serialized fields.
+    2. Reconstruct the corresponding application data.
+    3. Validate reconstructed values.
+    4. Recreate objects where required.
+    5. Prepare the data for restoration.
+
+Output:
+    Deserialized application data.
+
+
+14.6 Restore data
+--------------------------------------------------------------------------------
+Actions:
+    1. Determine how existing data should be handled.
+    2. Validate restored objects.
+    3. Insert or update the restored data through appropriate repository
+       methods.
+    4. Confirm that the restoration succeeded.
+    5. Reload relevant application state.
+    6. Verify the restored records.
+
+Output:
+    A complete restore process.
+
+
+
+################################################################################
+# PHASE 15 -- INTEGRATION
+################################################################################
+
+
+15.1 Connect frontend to services
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify every frontend action.
+    2. Identify the service responsible for that action.
+    3. Connect menu/screen events to service calls.
+    4. Pass validated user input to the services.
+    5. Receive results from the services.
+    6. Format the results for display.
+    7. Ensure frontend code does not directly bypass the intended
+       architecture.
+
+Output:
+    Frontend connected to business logic.
+
+
+15.2 Connect services to repositories
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify data required by each service.
+    2. Inject or provide the relevant repositories.
+    3. Replace temporary/mock data with repository calls.
+    4. Ensure services request data through the repository layer.
+    5. Test each service with real stored data.
+
+Output:
+    Business logic connected to persistent data access.
+
+
+15.3 Connect repositories to SQLite
+--------------------------------------------------------------------------------
+Actions:
+    1. Connect repository methods to the database manager.
+    2. Map object fields to database columns.
+    3. Map database rows back to objects.
+    4. Test insert operations.
+    5. Test retrieval operations.
+    6. Test updates.
+    7. Test deletions.
+    8. Fix any mapping problems.
+
+Output:
+    Complete domain-to-database integration.
+
+
+15.4 Connect statement parser
+--------------------------------------------------------------------------------
+Actions:
+    1. Connect the parser to the import menu.
+    2. Send parsed information into the transaction-processing service.
+    3. Reuse the same validation rules as manual transactions.
+    4. Reuse duplicate detection.
+    5. Reuse categorization.
+    6. Reuse repository storage.
+    7. Ensure statement-import transactions behave like manually entered
+       transactions.
+
+Output:
+    Integrated statement import.
+
+
+15.5 Connect serializer
+--------------------------------------------------------------------------------
+Actions:
+    1. Connect export functionality to the serializer.
+    2. Connect restore functionality to the deserializer.
+    3. Connect restoration to repositories/database where appropriate.
+    4. Test the complete backup and restore path.
+    5. Ensure serialization does not bypass data validation.
+
+Output:
+    Integrated serialization.
+
+
+15.6 Verify end-to-end flow
+--------------------------------------------------------------------------------
+Actions:
+    1. Start with a new application.
+    2. Create an account.
+    3. Add income.
+    4. Add expenses.
+    5. Create a budget.
+    6. Display the dashboard.
+    7. If statement import is implemented, import a statement.
+    8. If statement import is implemented, detect duplicates.
+    9. Store the valid new transactions.
+    10. Recalculate the dashboard.
+    11. Export the data.
+    12. Close the application.
+    13. Reopen it.
+    14. Verify database persistence.
+    15. Restore backup data and verify restoration.
+    16. Record any failures and fix them.
+
+Output:
+    A complete integrated application.
+
+
+
+################################################################################
+# PHASE 16 -- TESTING
+################################################################################
+
+
+16.1 Account tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Test creation of a valid account.
+    2. Test invalid account data.
+    3. Test duplicate account handling where applicable.
+    4. Test account retrieval.
+    5. Test account update.
+    6. Test account deletion.
+    7. Verify database consistency.
+
+Output:
+    Validated account functionality.
+
+
+16.2 Transaction tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Test a valid expense.
+    2. Test a valid income.
+    3. Test invalid amounts.
+    4. Test invalid account references.
+    5. Test missing data.
+    6. Test invalid dates.
+    7. Test transaction updates.
+    8. Test transaction deletion.
+    9. Verify correct database persistence.
+
+Output:
+    Validated transaction functionality.
+
+
+16.3 Budget tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Test valid budget creation.
+    2. Test invalid budget limits.
+    3. Test budget retrieval.
+    4. Test budget modification.
+    5. Test budget deletion.
+    6. Test spending below the limit.
+    7. Test spending exactly at the limit.
+    8. Test spending above the limit.
+
+Output:
+    Validated budget functionality.
+
+
+16.4 Optional statement parsing tests
+--------------------------------------------------------------------------------
+These tests are required only if statement import is implemented.
+
+Actions:
+    1. Prepare known sample statements.
+    2. Test valid CSV input if CSV is supported.
+    3. Test valid PDF input if PDF is supported.
+    4. Test malformed files.
+    5. Test missing columns.
+    6. Test invalid dates.
+    7. Test invalid amounts.
+    8. Test empty files.
+    9. Verify that extracted transactions match expected transactions.
+
+Output:
+    Reliable statement parsing.
+
+
+16.5 Duplicate tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Create known transactions in the database.
+    2. Import a matching transaction.
+    3. Verify that it is detected.
+    4. Import a similar but genuinely different transaction.
+    5. Verify that legitimate transactions are not incorrectly blocked.
+    6. Test multiple duplicates in one import.
+
+Output:
+    Validated duplicate detection.
+
+
+16.6 Database persistence tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Insert data.
+    2. Close the application.
+    3. Reopen it.
+    4. Retrieve the data.
+    5. Compare it with the original values.
+    6. Repeat this for accounts, transactions, and budgets.
+
+Output:
+    Proof of persistence.
+
+
+16.7 Serialization tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Create application data.
+    2. Export it.
+    3. Verify the backup file.
+    4. Modify or remove test data.
+    5. Restore the backup.
+    6. Compare restored data with original data.
+    7. Test invalid backup files.
+
+Output:
+    Validated serialization and restoration.
+
+
+16.8 Invalid-input tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Enter text where a number is expected.
+    2. Enter negative amounts.
+    3. Enter zero where prohibited.
+    4. Enter invalid dates.
+    5. Enter nonexistent IDs.
+    6. Enter invalid menu options.
+    7. Leave required fields empty.
+    8. Verify that the application responds without crashing.
+    9. Verify that invalid data does not reach the database.
+
+Output:
+    Robust input handling.
+
+
+16.9 End-to-end tests
+--------------------------------------------------------------------------------
+Actions:
+    1. Start from a clean application.
+    2. Create accounts.
+    3. Add income and expenses.
+    4. Create budgets.
+    5. Import statements.
+    6. Test duplicate handling.
+    7. Generate reports.
+    8. Check dashboard calculations.
+    9. Export data.
+    10. Restart application.
+    11. Verify persistence.
+    12. Restore backup.
+    13. Verify full system consistency.
+
+Output:
+    Full-system test coverage.
+
+
+
+################################################################################
+# PHASE 17 -- POLISH
+################################################################################
+
+
+17.1 Better CLI/GUI appearance
+--------------------------------------------------------------------------------
+Actions:
+    1. Review every menu or screen.
+    2. Standardize headings.
+    3. Standardize spacing and formatting.
+    4. Make tables readable.
+    5. Use consistent terminology.
+    6. Remove clutter.
+    7. Ensure navigation is understandable.
+
+Output:
+    A more polished interface.
+
+
+17.2 Cleaner messages
+--------------------------------------------------------------------------------
+Actions:
+    1. Review every success message.
+    2. Review every error message.
+    3. Replace vague messages with specific explanations.
+    4. Tell the user what went wrong.
+    5. Tell the user what corrective action is possible.
+    6. Ensure messages use consistent wording.
+
+Output:
+    Clear user communication.
+
+
+17.3 Better reports
+--------------------------------------------------------------------------------
+Actions:
+    1. Organize report information logically.
+    2. Align numeric values.
+    3. Highlight important totals.
+    4. Show useful category information.
+    5. Make budget status easy to interpret.
+    6. Remove irrelevant information.
+
+Output:
+    Professional-looking reports.
+
+
+17.4 Progress indicators
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify places where progress information is useful.
+    2. Add simple progress bars or percentages where appropriate.
+    3. Use them particularly for budget usage.
+    4. Avoid adding visual effects that make the program harder to use.
+
+Output:
+    Improved information presentation.
+
+
+17.5 Error handling
+--------------------------------------------------------------------------------
+Actions:
+    1. Identify operations that may fail.
+    2. Handle file errors.
+    3. Handle database errors.
+    4. Handle invalid input.
+    5. Handle parser errors.
+    6. Handle unexpected situations safely.
+    7. Ensure errors do not leave data in an inconsistent state.
+
+Output:
+    A more robust application.
+
+
+17.6 Overall usability
+--------------------------------------------------------------------------------
+Actions:
+    1. Ask another person to use the application without guidance.
+    2. Observe where they get confused.
+    3. Improve unclear navigation.
+    4. Improve confusing labels.
+    5. Reduce unnecessary steps.
+    6. Retest the application after changes.
+
+Output:
+    A more user-friendly application.
+
+
+
+################################################################################
+# PHASE 18 -- DOCUMENTATION
+################################################################################
+
+
+18.1 README
+--------------------------------------------------------------------------------
+Actions:
+    1. Explain the project title.
+    2. Explain the problem statement.
+    3. Explain the motivation.
+    4. Describe the major features.
+    5. List technologies used.
+    6. Explain the architecture briefly.
+    7. Explain how to build the project.
+    8. Explain how to run it.
+    9. Provide example usage.
+    10. Add screenshots.
+    11. Explain testing.
+    12. Explain future scope.
+    13. Add the project members.
+
+Output:
+    A complete project README.
+
+
+18.2 Problem statement documentation
+--------------------------------------------------------------------------------
+Actions:
+    1. Copy the official problem statement accurately.
+    2. Explain how the implementation satisfies each requirement.
+    3. Create a requirement-to-feature mapping.
+    4. Verify that no mandatory requirement is missing.
+
+Output:
+    Requirement traceability.
+
+
+18.3 Features documentation
+--------------------------------------------------------------------------------
+Actions:
+    1. List all implemented features.
+    2. Separate core features from optional enhancements.
+    3. Explain what each feature does.
+    4. Add examples where useful.
+
+Output:
+    A clear feature specification.
+
+
+18.4 Architecture diagram
+--------------------------------------------------------------------------------
+Actions:
+    1. Draw the frontend layer.
+    2. Draw business logic.
+    3. Draw transaction ingestion.
+    4. Draw repositories.
+    5. Draw SQLite.
+    6. Draw serialization.
+    7. Draw data flow between components.
+    8. Ensure the final diagram matches the actual code.
+
+Output:
+    Final architecture diagram.
+
+
+18.5 Class diagram
+--------------------------------------------------------------------------------
+Actions:
+    1. Add the core OOP classes.
+    2. Add supporting classes.
+    3. Add relationships.
+    4. Add important dependencies.
+    5. Match names with actual code.
+    6. Update the diagram after final code changes.
+
+Output:
+    Final class diagram.
+
+
+18.6 Database schema
+--------------------------------------------------------------------------------
+Actions:
+    1. Draw all tables.
+    2. Show columns.
+    3. Show primary keys.
+    4. Show foreign keys.
+    5. Show relationships.
+    6. Add constraints where useful.
+    7. Verify that the diagram matches the actual SQLite database.
+
+Output:
+    Final database documentation.
+
+
+18.7 Data flow diagrams
+--------------------------------------------------------------------------------
+Actions:
+    1. Draw manual transaction flow.
+    2. Draw statement-import flow.
+    3. Draw transaction-processing flow.
+    4. Draw database-storage flow.
+    5. Draw dashboard-analysis flow.
+    6. Draw serialization flow.
+    7. Verify consistency across all diagrams.
+
+Output:
+    Complete system data-flow documentation.
+
+
+18.8 Serialization design
+--------------------------------------------------------------------------------
+Actions:
+    1. Explain what serialization means in the project.
+    2. Explain what data is serialized.
+    3. Explain the file format.
+    4. Explain how serialization occurs.
+    5. Explain how deserialization occurs.
+    6. Explain backup and restoration.
+
+Output:
+    Serialization documentation.
+
+
+18.9 Statement import design
+--------------------------------------------------------------------------------
+Actions:
+    1. Explain why statement import exists.
+    2. Explain manual entry versus statement import.
+    3. Explain supported file formats.
+    4. Explain parsing.
+    5. Explain transaction conversion.
+    6. Explain duplicate detection.
+    7. Explain categorization.
+    8. Explain storage.
+
+Output:
+    Statement-import documentation.
+
+
+18.10 Testing documentation
+--------------------------------------------------------------------------------
+Actions:
+    1. Record important test cases.
+    2. Record test inputs.
+    3. Record expected outputs.
+    4. Record actual outputs.
+    5. Mark pass/fail.
+    6. Include edge cases.
+    7. Include screenshots for important tests where useful.
+
+Output:
+    Testing report.
+
+
+18.11 Screenshots
+--------------------------------------------------------------------------------
+Actions:
+    1. Run the final application.
+    2. Capture the main menu.
+    3. Capture account management.
+    4. Capture transaction entry.
+    5. Capture statement import.
+    6. Capture duplicate detection.
+    7. Capture budget management.
+    8. Capture dashboard.
+    9. Capture reports.
+    10. Capture backup/restore.
+    11. Organize screenshots in the documentation.
+
+Output:
+    A visual record of the finished application.
+
+
+
+################################################################################
+# PHASE 19 -- DEMONSTRATION
+################################################################################
+
+
+19.1 Prepare demo data
+--------------------------------------------------------------------------------
+Actions:
+    1. Create realistic sample accounts.
+    2. Add realistic income.
+    3. Add realistic expenses.
+    4. Create several budgets.
+    5. Ensure dashboard calculations produce interesting results.
+    6. Keep the dataset small enough to explain quickly.
+
+Output:
+    A controlled demonstration dataset.
+
+
+19.2 Optional: Prepare sample bank statement
+--------------------------------------------------------------------------------
+This demonstration step applies only if statement import is implemented.
+
+Actions:
+    1. Create or use a synthetic statement for demonstration.
+    2. Avoid using real personal financial information.
+    3. Include realistic transactions.
+    4. Include both debit and credit records if supported.
+    5. Include at least one transaction that can demonstrate duplicate
+       detection.
+    6. Verify that the application parses the statement correctly before the
+       presentation.
+
+Output:
+    A reliable demo statement.
+
+
+19.3 Show manual transaction
+--------------------------------------------------------------------------------
+Actions:
+    1. Open the application.
+    2. Add a new expense.
+    3. Enter the details.
+    4. Save it.
+    5. Show the successful insertion.
+    6. Open the transaction list and verify it.
+
+Output:
+    Demonstration of manual entry.
+
+
+19.4 Optional: Show statement import
+--------------------------------------------------------------------------------
+This demonstration step applies only if statement import is implemented.
+
+Actions:
+    1. Open the import option.
+    2. Select the demo statement.
+    3. Show the detected transactions.
+    4. Show parsing or import results.
+    5. Review duplicates if any.
+    6. Confirm the import.
+    7. Show that the transactions are now stored.
+
+Output:
+    Demonstration of statement ingestion.
+
+
+19.5 Optional: Show duplicate detection
+--------------------------------------------------------------------------------
+This demonstration step applies only if imported transactions are implemented.
+
+Actions:
+    1. Ensure one demo transaction already exists.
+    2. Import a statement containing that same transaction.
+    3. Show the duplicate warning.
+    4. Explain how the application avoids double-counting.
+    5. Confirm the desired behaviour.
+
+Output:
+    Demonstration of duplicate protection.
+
+
+19.6 Show budget calculation
+--------------------------------------------------------------------------------
+Actions:
+    1. Open the budget section or dashboard.
+    2. Show a selected category.
+    3. Show the budget limit.
+    4. Show actual spending.
+    5. Show remaining amount.
+    6. Demonstrate an over-budget category if useful.
+
+Output:
+    Demonstration of budgeting functionality.
+
+
+19.7 Show dashboard
+--------------------------------------------------------------------------------
+Actions:
+    1. Open the dashboard.
+    2. Show income.
+    3. Show expenses.
+    4. Show savings.
+    5. Show account balance.
+    6. Show category-wise spending.
+    7. Show budget usage.
+    8. Explain how the values were calculated.
+
+Output:
+    Demonstration of financial analysis.
+
+
+19.8 Show persistence
+--------------------------------------------------------------------------------
+Actions:
+    1. Create or display known data.
+    2. Close the application.
+    3. Restart it.
+    4. Open the same data.
+    5. Show that the data still exists.
+    6. Explain that SQLite provides persistence.
+
+Output:
+    Demonstration of persistent storage.
+
+
+19.9 Show backup/restore
+--------------------------------------------------------------------------------
+Actions:
+    1. Export application data.
+    2. Show the generated backup file.
+    3. Modify or clear test data in a controlled environment.
+    4. Restore the backup.
+    5. Show recovered data.
+    6. Explain that serialization and deserialization enabled restoration.
+
+Output:
+    Demonstration of file serialization.
+
+
+
+################################################################################
+# PHASE 20 -- FINAL GIT RELEASE
+################################################################################
+
+
+20.1 Code cleanup
+--------------------------------------------------------------------------------
+Actions:
+    1. Review all source files.
+    2. Remove unused code.
+    3. Remove debug output.
+    4. Remove temporary files.
+    5. Remove unnecessary commented-out code.
+    6. Standardize naming.
+    7. Check formatting.
+    8. Check that project structure remains clean.
+
+Output:
+    Clean final source code.
+
+
+20.2 Final testing
+--------------------------------------------------------------------------------
+Actions:
+    1. Build the project from a clean state.
+    2. Run all important tests.
+    3. Run complete user workflows.
+    4. Test database persistence.
+    5. Test serialization.
+    6. Test statement import where implemented.
+    7. Test invalid inputs.
+    8. Fix any remaining bugs.
+    9. Repeat testing after fixes.
+
+Output:
+    A stable final build.
+
+
+20.3 README completion
+--------------------------------------------------------------------------------
+Actions:
+    1. Update the README with final features.
+    2. Update build/run instructions.
+    3. Add final architecture information.
+    4. Add screenshots.
+    5. Add usage examples.
+    6. Add testing information.
+    7. Add future enhancements.
+    8. Verify every instruction actually works.
+
+Output:
+    Final README.
+
+
+20.4 Final commits
+--------------------------------------------------------------------------------
+Actions:
+    1. Check Git status.
+    2. Review changed files.
+    3. Stage the appropriate project files.
+    4. Commit with a meaningful message.
+    5. Review the commit.
+    6. Push the commit to GitHub.
+
+Output:
+    Final Git history containing the completed work.
+
+
+20.5 Merge branches
+--------------------------------------------------------------------------------
+Actions:
+    1. Review remaining feature branches.
+    2. Verify that completed work has been merged.
+    3. Resolve conflicts if any exist.
+    4. Run tests after merging.
+    5. Verify that the main branch contains the intended final version.
+
+Output:
+    A consolidated project on main.
+
+
+20.6 Stable main branch
+--------------------------------------------------------------------------------
+Actions:
+    1. Clone or inspect the main branch from a clean environment.
+    2. Build the project.
+    3. Run the application.
+    4. Test major functionality.
+    5. Confirm documentation is present.
+    6. Confirm no essential source file is missing.
+    7. Confirm the main branch represents the stable version.
+
+Output:
+    A reliable production/demo-ready main branch.
+
+
+20.7 Final submission / release
+--------------------------------------------------------------------------------
+Actions:
+    1. Decide the final version number.
+    2. Create a Git tag such as v1.0.
+    3. Push the tag to GitHub if appropriate.
+    4. Confirm the repository is accessible.
+    5. Confirm README instructions work.
+    6. Confirm all final documentation is present.
+    7. Prepare the final submission package if required by the college.
+    8. Preserve the stable version for future demonstration.
+
+Output:
+    The official first stable release of the project.
+
+
+
+################################################################################
+# COMPLETE PROJECT END-TO-END FLOW
+################################################################################
+
+The complete journey of the project is therefore:
+
+    PROBLEM STATEMENT
+            |
+            v
+    Understand every requirement
+            |
+            v
+    Define what the application must do
+            |
+            v
+    Define what the application does NOT need to do
+            |
+            v
+    Freeze the project scope
+            |
+            v
+    Define the MVP
+            |
+            v
+    Create GitHub repository
+            |
+            v
+    Create initial README
+            |
+            v
+    Create .gitignore
+            |
+            v
+    Create project structure
+            |
+            v
+    Establish pair-programming Git workflow
+            |
+            v
+    Design user workflows
+            |
+            v
+    Design system architecture
+            |
+            v
+    Design OOP classes
+            |
+            v
+    Design database
+            |
+            v
+    Implement Account
+            |
+            v
+    Implement Transaction
+            |
+            v
+    Implement Budget
+            |
+            v
+    Implement SQLite backend
+            |
+            v
+    Implement repositories
+            |
+            v
+    Implement manual transaction entry
+            |
+            v
+    Complete and verify the core MVP
+            |
+            v
+    Implement optional statement import if selected
+            |
+            v
+    Process and normalize transactions
+            |
+            v
+    Detect duplicates
+            |
+            v
+    Categorize transactions
+            |
+            v
+    Implement financial calculations
+            |
+            v
+    Implement budgeting
+            |
+            v
+    Build frontend
+            |
+            v
+    Build dashboard
+            |
+            v
+    Build reports
+            |
+            v
+    Implement serialization
+            |
+            v
+    Integrate all components
+            |
+            v
+    Perform end-to-end testing
+            |
+            v
+    Fix bugs
+            |
+            v
+    Polish the application
+            |
+            v
+    Complete documentation
+            |
+            v
+    Prepare demonstration
+            |
+            v
+    Clean final code
+            |
+            v
+    Final testing
+            |
+            v
+    Update README
+            |
+            v
+    Merge final branches
+            |
+            v
+    Verify stable main branch
+            |
+            v
+    Create v1.0 release
+            |
+            v
+    FINAL PROJECT
+
+
+
+################################################################################
+# PROJECT ARCHITECTURE AT COMPLETION
+################################################################################
+
+                               USER
+                                |
+                                v
+                       +-----------------+
+                       |    FRONTEND     |
+                       |    CLI / GUI    |
+                       +--------+--------+
+                                |
+                                v
+                       +-----------------+
+                       |  BUSINESS LOGIC |
+                       | FinanceService  |
+                       | ReportService   |
+                       +--------+--------+
+                                |
+                   +------------+-------------+
+                   |            |             |
+                   v            v             v
+            Manual Entry   Statement      Reporting
+                           Import
+                                |
+                      +---------+---------+
+                      v                   v
+                   CSV Parser          PDF Parser
+                      |                   |
+                      +---------+---------+
+                                v
+                         Transaction Data
+                                |
+                                v
+                         Transaction Object
+                                |
+                                v
+                          VALIDATION
+                                |
+                                v
+                          NORMALIZATION
+                                |
+                                v
+                       DUPLICATE DETECTION
+                                |
+                                v
+                          CATEGORIZATION
+                                |
+                                v
+                           REPOSITORIES
+                                |
+                                v
+                        DATABASE MANAGER
+                                |
+                                v
+                             SQLITE
+                                |
+                +---------------+----------------+
+                v               v                v
+             Accounts       Transactions      Budgets
+                                |
+                                v
+                      Financial Calculations
+                                |
+                   +------------+------------+
+                   v            v            v
+                Balance      Expenses     Savings
+                   |            |            |
+                   +------------+------------+
+                                v
+                           DASHBOARD
+
+
+Serialization is a separate supporting flow:
+
+    APPLICATION DATA
+           |
+           v
+       SERIALIZER
+           |
+           v
+      BACKUP FILE
+           |
+           v
+     DESERIALIZER
+           |
+           v
+     RESTORED DATA
+           |
+           v
+        SQLITE
+
+
+
+################################################################################
+# TRANSACTION FLOW AT COMPLETION
+################################################################################
+
+                          TRANSACTION SOURCES
+                                    |
+                      +-------------+-------------+
+                      |                           |
+                      v                           v
+                QUICK MANUAL               BANK STATEMENT
+                    ENTRY                      IMPORT
+                      |                           |
+                      |                    +------+------+
+                      |                    v             v
+                      |                   CSV           PDF
+                      |                 Parser        Parser
+                      |                    |             |
+                      +------------+-------+-------------+
+                                   v
+                           TRANSACTION DATA
+                                   |
+                                   v
+                          TRANSACTION OBJECT
+                                   |
+                                   v
+                             VALIDATION
+                                   |
+                                   v
+                           NORMALIZATION
+                                   |
+                                   v
+                       DUPLICATE DETECTION
+                                   |
+                                   v
+                            CATEGORIZATION
+                                   |
+                                   v
+                                SQLITE
+                                   |
+                        +----------+----------+
+                        v          v          v
+                     BALANCE    BUDGETS    REPORTS
+                        |          |          |
+                        +----------+----------+
+                                   v
+                               DASHBOARD
+
+
+
+################################################################################
+# DEVELOPMENT HIERARCHY FOR THE REST OF THE PROJECT
+################################################################################
+
+This master workflow is the top-level map. Every item can later be broken down
+further.
+
+    LEVEL 0
+    MASTER PROJECT WORKFLOW
+            |
+            v
+    LEVEL 1
+    PHASE
+            |
+            v
+    LEVEL 2
+    INDIVIDUAL STEP
+            |
+            v
+    LEVEL 3
+    MICRO-WORKFLOW
+            |
+            v
+    LEVEL 4
+    INDIVIDUAL TASK
+            |
+            v
+    LEVEL 5
+    ACTUAL CODE / COMMAND / ACTION
+            |
+            v
+    TEST
+            |
+            v
+    GIT COMMIT
+
+For example:
+
+    PHASE 5 -- OOP DESIGN
+            |
+            v
+    5.1 Account Class
+            |
+            v
+    5.1.1 Identify responsibilities
+            |
+            v
+    5.1.2 Identify attributes
+            |
+            v
+    5.1.3 Choose data types
+            |
+            v
+    5.1.4 Decide constructors
+            |
+            v
+    5.1.5 Decide methods
+            |
+            v
+    5.1.6 Decide validation
+            |
+            v
+    5.1.7 Review class design
+            |
+            v
+    5.1.8 Implement class
+            |
+            v
+    5.1.9 Compile
+            |
+            v
+    5.1.10 Test
+            |
+            v
+    5.1.11 Commit to Git
+
+The same decomposition method will be applied to every phase and every
+individual step in this master workflow.
+
+
+
+################################################################################
+# FINAL PROJECT PRINCIPLE
+################################################################################
+
+The project should be developed from requirements -> design -> implementation
+-> integration -> testing -> polishing -> documentation -> demonstration ->
+release.
+
+We should not randomly jump between frontend, database, OOP, Git, and
+statement parsing.
+
+At any point in the project, we should be able to answer:
+
+    - What phase are we currently in?
+    - What individual step are we completing?
+    - Why are we doing it?
+    - What smaller tasks are required?
+    - What should be produced when it is complete?
+    - How will we test it?
+    - When will we commit it?
+
+That is the purpose of this master workflow.
+
+The workflow therefore represents the complete lifecycle of the Personal
+Finance & Budgeting Dashboard, from the original problem statement through the
+final stable GitHub release.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
