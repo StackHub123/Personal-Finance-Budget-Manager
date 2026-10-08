@@ -1,0 +1,203 @@
+PERSONAL FINANCE AND BUDGETING DASHBOARD
+
+WORKFLOW:
+
+PERSONAL FINANCE & BUDGETING DASHBOARD
+│
+├── PHASE 0 — UNDERSTAND THE PROBLEM
+│   ├── Read exact problem statement
+│   ├── Extract mandatory requirements
+│   ├── Identify implied expectations
+│   └── Define what the project is NOT required to do
+│
+├── PHASE 1 — FREEZE PROJECT SCOPE
+│   ├── Must-have features
+│   ├── Should-have features
+│   ├── Stretch features
+│   ├── Explicitly out-of-scope features
+│   └── Define final MVP
+│
+├── PHASE 2 — GIT + DEVELOPMENT ENVIRONMENT
+│   ├── Create GitHub repository
+│   ├── Create initial README
+│   ├── Create .gitignore
+│   ├── Establish folder structure
+│   ├── Decide branching strategy
+│   └── Define pair-programming workflow
+│
+├── PHASE 3 — REQUIREMENTS & USER WORKFLOWS
+│   ├── Account workflow
+│   ├── Manual transaction workflow
+│   ├── Statement import workflow
+│   ├── Duplicate detection workflow
+│   ├── Budget workflow
+│   ├── Dashboard workflow
+│   ├── Reports workflow
+│   └── Backup/restore workflow
+│
+├── PHASE 4 — SYSTEM ARCHITECTURE
+│   ├── Frontend layer
+│   ├── Business logic layer
+│   ├── Transaction ingestion layer
+│   ├── Repository/data-access layer
+│   ├── Database layer
+│   └── Serialization layer
+│
+├── PHASE 5 — OOP DESIGN
+│   ├── Account class
+│   ├── Transaction class
+│   ├── Budget class
+│   ├── Supporting types
+│   ├── Service classes
+│   ├── Repository classes
+│   ├── Parser classes
+│   └── Serializer class
+│
+├── PHASE 6 — DATABASE DESIGN
+│   ├── Accounts table
+│   ├── Transactions table
+│   ├── Budgets table
+│   ├── Categories / supporting tables
+│   ├── Primary keys
+│   ├── Foreign keys
+│   ├── Constraints
+│   └── Indexing / query design
+│
+├── PHASE 7 — CORE OOP IMPLEMENTATION
+│   ├── Account
+│   ├── Transaction
+│   ├── Budget
+│   └── Supporting domain classes
+│
+├── PHASE 8 — SQLITE BACKEND
+│   ├── Database connection
+│   ├── Schema creation
+│   ├── CRUD operations
+│   ├── Repositories
+│   └── Persistent storage
+│
+├── PHASE 9 — TRANSACTION INPUT SYSTEM
+│   │
+│   ├── A. QUICK MANUAL ENTRY
+│   │   ├── Add expense
+│   │   ├── Add income
+│   │   ├── Validation
+│   │   └── Save transaction
+│   │
+│   └── B. BANK STATEMENT IMPORT
+│       ├── Accept statement file
+│       ├── Determine supported format
+│       ├── Extract transaction rows
+│       ├── Parse dates
+│       ├── Parse amounts
+│       ├── Parse descriptions
+│       ├── Determine debit/credit
+│       ├── Convert to Transaction objects
+│       └── Send to business logic
+│
+├── PHASE 10 — TRANSACTION PROCESSING
+│   ├── Validation
+│   ├── Category detection
+│   ├── Duplicate detection
+│   ├── Duplicate confirmation
+│   ├── Transaction normalization
+│   └── Final database insertion
+│
+├── PHASE 11 — BUSINESS LOGIC
+│   ├── Account balance calculation
+│   ├── Total income
+│   ├── Total expenses
+│   ├── Net savings
+│   ├── Category-wise spending
+│   ├── Monthly spending
+│   ├── Budget usage
+│   ├── Remaining budget
+│   └── Over-budget detection
+│
+├── PHASE 12 — BUDGET SYSTEM
+│   ├── Create budget
+│   ├── Edit budget
+│   ├── Delete budget
+│   ├── Calculate spending against budget
+│   ├── Remaining amount
+│   ├── Budget percentage used
+│   └── Over-budget alerts
+│
+├── PHASE 13 — DASHBOARD / FRONTEND
+│   ├── Main menu
+│   ├── Account menu
+│   ├── Transaction menu
+│   ├── Import menu
+│   ├── Budget menu
+│   ├── Dashboard
+│   ├── Reports
+│   └── Settings / utility functions
+│
+├── PHASE 14 — FILE SERIALIZATION
+│   ├── Serialize objects
+│   ├── Export data
+│   ├── Backup format
+│   ├── Import backup
+│   ├── Deserialize objects
+│   └── Restore data
+│
+├── PHASE 15 — INTEGRATION
+│   ├── Connect frontend to services
+│   ├── Connect services to repositories
+│   ├── Connect repositories to SQLite
+│   ├── Connect statement parser
+│   ├── Connect serializer
+│   └── Verify end-to-end flow
+│
+├── PHASE 16 — TESTING
+│   ├── Account tests
+│   ├── Transaction tests
+│   ├── Budget tests
+│   ├── Statement parsing tests
+│   ├── Duplicate tests
+│   ├── Database persistence tests
+│   ├── Serialization tests
+│   ├── Invalid-input tests
+│   └── End-to-end tests
+│
+├── PHASE 17 — POLISH
+│   ├── Better CLI/GUI appearance
+│   ├── Cleaner messages
+│   ├── Better reports
+│   ├── Progress indicators
+│   ├── Error handling
+│   └── Overall usability
+│
+├── PHASE 18 — DOCUMENTATION
+│   ├── README
+│   ├── Problem statement
+│   ├── Features
+│   ├── Architecture diagram
+│   ├── Class diagram
+│   ├── Database schema
+│   ├── Data flow diagrams
+│   ├── Serialization design
+│   ├── Statement import design
+│   ├── Testing documentation
+│   └── Screenshots
+│
+├── PHASE 19 — DEMONSTRATION
+│   ├── Prepare demo data
+│   ├── Prepare sample bank statement
+│   ├── Show manual transaction
+│   ├── Show statement import
+│   ├── Show duplicate detection
+│   ├── Show budget calculation
+│   ├── Show dashboard
+│   ├── Show persistence
+│   └── Show backup/restore
+│
+└── PHASE 20 — FINAL GIT RELEASE
+    ├── Code cleanup
+    ├── Final testing
+    ├── README completion
+    ├── Final commits
+    ├── Merge branches
+    ├── Stable main branch
+    └── Final submission / release
+    
