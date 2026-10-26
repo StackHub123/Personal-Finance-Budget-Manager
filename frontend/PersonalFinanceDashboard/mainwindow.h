@@ -1,6 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "database/DatabaseManager.h"
+#include "repositories/AccountRepository.h"
+#include "repositories/TransactionRepository.h"
+#include "repositories/BudgetRepository.h"
+#include "services/FinanceService.h"
+#include "services/TransactionService.h"
+#include "services/BudgetService.h"
+
 #include <QMainWindow>
 #include <QVector>
 #include <QString>
@@ -62,6 +70,16 @@ private:
     void backupData();
     void restoreData();
     void applyStyles();
+
+    DatabaseManager m_database;
+    AccountRepository m_accountRepository;
+    TransactionRepository m_transactionRepository;
+    BudgetRepository m_budgetRepository;
+    FinanceService m_financeService;
+    TransactionService m_transactionService;
+    BudgetService m_budgetService;
+    bool m_databaseReady = false;
+    QString m_databaseError;
 
     QStackedWidget *m_pages = nullptr;
     QButtonGroup *m_navigationGroup = nullptr;
