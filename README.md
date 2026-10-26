@@ -20,6 +20,9 @@ tracking income and expenses, and maintaining a record of transactions.
 - Object-Oriented Programming
 - STL
 - File Handling
+- SQLite
+- CMake
+- Qt Software
 
 ## Team
 
