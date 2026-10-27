@@ -50,6 +50,8 @@ qt_add_executable(PersonalFinanceFrontend
     # Business logic
     "${PROJECT_ROOT}/include/services/FinanceService.h"
     "${PROJECT_ROOT}/src/services/FinanceService.cpp"
+"${PROJECT_ROOT}/include/services/BackupRestoreService.h"
+    "${PROJECT_ROOT}/src/services/BackupRestoreService.cpp"
     "${PROJECT_ROOT}/include/services/TransactionService.h"
     "${PROJECT_ROOT}/src/services/TransactionService.cpp"
     "${PROJECT_ROOT}/include/services/BudgetService.h"

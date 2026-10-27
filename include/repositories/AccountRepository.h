@@ -31,6 +31,9 @@ public:
     // Delete an account that has no associated transactions.
     bool remove(int id, std::string& error);
 
+    // Restore an account with its original database ID.
+    bool addRestored(const Account& account, std::string& error);
+
 private:
     DatabaseManager& m_database;
 };

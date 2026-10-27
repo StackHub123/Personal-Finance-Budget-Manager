@@ -8,6 +8,7 @@
 #include "services/FinanceService.h"
 #include "services/TransactionService.h"
 #include "services/BudgetService.h"
+#include "services/BackupRestoreService.h"
 
 #include <QMainWindow>
 #include <QVector>
@@ -78,6 +79,7 @@ private:
     FinanceService m_financeService;
     TransactionService m_transactionService;
     BudgetService m_budgetService;
+    BackupRestoreService m_backupRestoreService;
     bool m_databaseReady = false;
     QString m_databaseError;
 

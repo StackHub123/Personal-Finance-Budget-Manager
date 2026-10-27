@@ -391,3 +391,52 @@ bool BudgetRepository::remove(int id, std::string& error)
     error.clear();
     return true;
 }
+
+
+bool BudgetRepository::addRestored(
+    const Budget& budget,
+    std::string& error)
+{
+    if (!m_database.isOpen()) {
+        error = "Cannot restore budget: database is not open.";
+        return false;
+    }
+
+    if (budget.getId() <= 0) {
+        error = "Restored budget ID must be positive.";
+        return false;
+    }
+
+    const char* sql =
+        "INSERT INTO budgets "
+        "(category, month, year, limit_paise, id) "
+        "VALUES (?, ?, ?, ?, ?);";
+
+    Statement statement(nullptr, sqlite3_finalize);
+
+    if (!prepareStatement(
+            m_database.handle(), sql, statement, error)) {
+        return false;
+    }
+
+    if (!bindBudgetFields(
+            statement.get(), budget, m_database.handle(), error)) {
+        return false;
+    }
+
+    const int result = sqlite3_bind_int(
+        statement.get(), 5, budget.getId());
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    error.clear();
+    return true;
+}

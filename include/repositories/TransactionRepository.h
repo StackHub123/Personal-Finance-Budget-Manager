@@ -31,6 +31,9 @@ public:
     // Delete a transaction by ID.
     bool remove(int id, std::string& error);
 
+    // Restore a transaction with its original database ID.
+    bool addRestored(const Transaction& transaction, std::string& error);
+
 private:
     DatabaseManager& m_database;
 };

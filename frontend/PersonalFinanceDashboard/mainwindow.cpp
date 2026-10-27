@@ -1,5 +1,8 @@
 #include "mainwindow.h"
 #include "models/Account.h"
+#include <vector>
+#include <stdexcept>
+#include <limits>
 #include <QCoreApplication>
 #include <cmath>
 #include <cstdint>
@@ -75,7 +78,9 @@ MainWindow::MainWindow(QWidget *parent)
       m_budgetRepository(m_database),
       m_financeService(m_accountRepository, m_transactionRepository),
       m_transactionService(m_accountRepository, m_transactionRepository),
-      m_budgetService(m_budgetRepository, m_transactionRepository)
+      m_budgetService(m_budgetRepository, m_transactionRepository),
+      m_backupRestoreService(m_database, m_accountRepository,
+                             m_transactionRepository, m_budgetRepository)
 {
     QCoreApplication::setOrganizationName("PFBM");
     QCoreApplication::setApplicationName("PersonalFinanceDashboard");
@@ -2011,41 +2016,365 @@ QWidget *MainWindow::buildUtilitiesPage()
     f->addWidget(backup); f->addWidget(restore); f->addWidget(about); layout->addWidget(panel); layout->addStretch();
     connect(backup,&QPushButton::clicked,this,&MainWindow::backupData);
     connect(restore,&QPushButton::clicked,this,&MainWindow::restoreData);
-    connect(about,&QPushButton::clicked,this,[this](){QMessageBox::information(this,"About PFBM","Personal Finance & Budgeting Dashboard\\nFrontend prototype\\nData currently lives in memory unless exported to a backup file.");});
+    connect(about,&QPushButton::clicked,this,[this](){QMessageBox::information(this,"About PFBM","Personal Finance & Budgeting Dashboard\\nFrontend prototype\\nData is stored persistently in SQLite. JSON backup and restore are supported.");});
     return page;
 }
 
 void MainWindow::backupData()
 {
-    const QString path=QFileDialog::getSaveFileName(this,"Back up PFBM data",QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)+"/pfbm-backup.json","JSON backup (*.json)");
-    if(path.isEmpty())return;
-    QJsonObject root; QJsonArray accounts,transactions,budgets;
-    for(const auto &a:m_accounts){QJsonObject o;o["id"]=a.id;o["name"]=a.name;o["type"]=a.type;o["balance"]=a.balance;accounts.append(o);}
-    for(const auto &t:m_transactions){QJsonObject o;o["id"]=t.id;o["accountId"]=t.accountId;o["date"]=t.date;o["description"]=t.description;o["category"]=t.category;o["type"]=t.type;o["amount"]=t.amount;transactions.append(o);}
-    for(const auto &b:m_budgets){QJsonObject o;o["id"]=b.id;o["category"]=b.category;o["limit"]=b.limit;o["month"]=b.month;budgets.append(o);}
-    root["format"]="PFBM-backup-v1";root["accounts"]=accounts;root["transactions"]=transactions;root["budgets"]=budgets;
-    QSaveFile file(path);if(!file.open(QIODevice::WriteOnly)){QMessageBox::warning(this,"Backup failed",file.errorString());return;}
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));if(!file.commit()){QMessageBox::warning(this,"Backup failed",file.errorString());return;}
-    QMessageBox::information(this,"Backup complete","Session data backed up to:\\n"+path);
+    if (!m_databaseReady) {
+        QMessageBox::warning(
+            this, "Backup failed",
+            "The database is not available. No backup was created.");
+        return;
+    }
+
+    const QString defaultPath =
+        QDir(QStandardPaths::writableLocation(
+            QStandardPaths::DocumentsLocation))
+            .filePath("pfbm-backup.json");
+
+    const QString path = QFileDialog::getSaveFileName(
+        this, "Back up PFBM data", defaultPath, "JSON backup (*.json)");
+
+    if (path.isEmpty())
+        return;
+
+    std::string error;
+    const auto accounts = m_accountRepository.getAll(error);
+    if (!error.empty()) {
+        QMessageBox::warning(
+            this, "Backup failed", QString::fromStdString(error));
+        return;
+    }
+
+    error.clear();
+    const auto transactions = m_transactionRepository.getAll(error);
+    if (!error.empty()) {
+        QMessageBox::warning(
+            this, "Backup failed", QString::fromStdString(error));
+        return;
+    }
+
+    error.clear();
+    const auto budgets = m_budgetRepository.getAll(error);
+    if (!error.empty()) {
+        QMessageBox::warning(
+            this, "Backup failed", QString::fromStdString(error));
+        return;
+    }
+
+    QJsonArray accountArray;
+    QJsonArray transactionArray;
+    QJsonArray budgetArray;
+
+    for (const auto& account : accounts) {
+        QJsonObject item;
+        item["id"] = account.getId();
+        item["name"] = QString::fromStdString(account.getName());
+        item["type"] = QString::fromStdString(account.getType());
+        item["initialBalancePaise"] =
+            QString::number(account.getInitialBalancePaise());
+        accountArray.append(item);
+    }
+
+    for (const auto& transaction : transactions) {
+        QJsonObject item;
+        item["id"] = transaction.getId();
+        item["accountId"] = transaction.getAccountId();
+        item["amountPaise"] = QString::number(transaction.getAmountPaise());
+        item["type"] =
+            transaction.getType() == TransactionType::Income
+                ? "income" : "expense";
+        item["category"] = QString::fromStdString(transaction.getCategory());
+        item["description"] =
+            QString::fromStdString(transaction.getDescription());
+        item["date"] = QString::fromStdString(transaction.getDate());
+        transactionArray.append(item);
+    }
+
+    for (const auto& budget : budgets) {
+        QJsonObject item;
+        item["id"] = budget.getId();
+        item["category"] = QString::fromStdString(budget.getCategory());
+        item["month"] = budget.getMonth();
+        item["year"] = budget.getYear();
+        item["limitPaise"] = QString::number(budget.getLimitPaise());
+        budgetArray.append(item);
+    }
+
+    QJsonObject backup;
+    backup["format"] = "PFBM-backup-v2";
+    backup["accounts"] = accountArray;
+    backup["transactions"] = transactionArray;
+    backup["budgets"] = budgetArray;
+
+    const QByteArray payload =
+        QJsonDocument(backup).toJson(QJsonDocument::Indented);
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, "Backup failed", file.errorString());
+        return;
+    }
+
+    if (file.write(payload) != payload.size()) {
+        const QString message = file.errorString();
+        file.cancelWriting();
+        QMessageBox::warning(this, "Backup failed", message);
+        return;
+    }
+
+    if (!file.commit()) {
+        QMessageBox::warning(this, "Backup failed", file.errorString());
+        return;
+    }
+
+    QMessageBox::information(
+        this, "Backup complete",
+        QString("Database backup saved successfully.\n%1").arg(path));
 }
 
 void MainWindow::restoreData()
 {
-    const QString path=QFileDialog::getOpenFileName(this,"Restore PFBM backup",QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),"JSON backup (*.json)");
-    if(path.isEmpty())return;
-    QFile file(path);if(!file.open(QIODevice::ReadOnly)){QMessageBox::warning(this,"Restore failed",file.errorString());return;}
-    QJsonParseError error;const auto doc=QJsonDocument::fromJson(file.readAll(),&error);
-    if(error.error!=QJsonParseError::NoError||!doc.isObject()||doc.object().value("format").toString()!="PFBM-backup-v1"){QMessageBox::warning(this,"Restore failed","This file is not a valid PFBM backup.");return;}
-    if(QMessageBox::question(this,"Confirm restore","Restoring replaces the current in-memory accounts, transactions and budgets. Continue?",QMessageBox::Yes|QMessageBox::No)!=QMessageBox::Yes)return;
-    m_accounts.clear();m_transactions.clear();m_budgets.clear();
-    for(const auto v:doc.object().value("accounts").toArray()){auto o=v.toObject();m_accounts.append({o["id"].toInt(),o["name"].toString(),o["type"].toString(),o["balance"].toDouble()});}
-    for(const auto v:doc.object().value("transactions").toArray()){auto o=v.toObject();m_transactions.append({o["id"].toInt(),o["accountId"].toInt(),o["date"].toString(),o["description"].toString(),o["category"].toString(),o["type"].toString(),o["amount"].toDouble()});}
-    for(const auto v:doc.object().value("budgets").toArray()){auto o=v.toObject();m_budgets.append({o["id"].toInt(),o["category"].toString(),o["limit"].toDouble(),o["month"].toString()});}
-    m_nextAccountId=1;for(const auto &a:m_accounts)m_nextAccountId=qMax(m_nextAccountId,a.id+1);
-    m_nextTransactionId=1;for(const auto &t:m_transactions)m_nextTransactionId=qMax(m_nextTransactionId,t.id+1);
-    m_nextBudgetId=1;for(const auto &b:m_budgets)m_nextBudgetId=qMax(m_nextBudgetId,b.id+1);
-    refreshAccountsTable();refreshStatementAccountCombo();refreshTransactionsTable();refreshBudgetsTable();refreshDashboard();
-    QMessageBox::information(this,"Restore complete","Backup restored for this session. It will remain temporary until database persistence is added.");
+    if (!m_databaseReady) {
+        QMessageBox::warning(
+            this, "Restore failed", "The database is not available.");
+        return;
+    }
+
+    const QString path = QFileDialog::getOpenFileName(
+        this, "Restore PFBM backup",
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        "JSON backup (*.json)");
+
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, "Restore failed", file.errorString());
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document =
+        QJsonDocument::fromJson(file.readAll(), &parseError);
+
+    if (parseError.error != QJsonParseError::NoError ||
+        !document.isObject()) {
+        QMessageBox::warning(
+            this, "Restore failed", "The selected file is not valid JSON.");
+        return;
+    }
+
+    const QJsonObject root = document.object();
+
+    if (root.value("format").toString() != "PFBM-backup-v2" ||
+        !root.value("accounts").isArray() ||
+        !root.value("transactions").isArray() ||
+        !root.value("budgets").isArray()) {
+        QMessageBox::warning(
+            this, "Restore failed",
+            "This is not a supported PFBM v2 backup. "
+            "Create a new backup using the current application.");
+        return;
+    }
+
+    // Strict field readers: reject missing fields and invalid JSON types.
+    auto readInt = [](
+        const QJsonObject& object,
+        const QString& key,
+        int& result,
+        int minimum,
+        int maximum) -> bool
+    {
+        const QJsonValue value = object.value(key);
+        if (!value.isDouble())
+            return false;
+
+        const double number = value.toDouble();
+        if (!std::isfinite(number) ||
+            std::floor(number) != number ||
+            number < minimum || number > maximum)
+            return false;
+
+        result = static_cast<int>(number);
+        return true;
+    };
+
+    auto readString = [](
+        const QJsonObject& object,
+        const QString& key,
+        QString& result,
+        bool allowEmpty) -> bool
+    {
+        const QJsonValue value = object.value(key);
+        if (!value.isString())
+            return false;
+
+        result = value.toString();
+        return allowEmpty || !result.trimmed().isEmpty();
+    };
+
+    auto readPaise = [](
+        const QJsonObject& object,
+        const QString& key,
+        std::int64_t& result,
+        bool mustBePositive) -> bool
+    {
+        const QJsonValue value = object.value(key);
+        if (!value.isString())
+            return false;
+
+        bool ok = false;
+        const qlonglong parsed = value.toString().toLongLong(&ok);
+        if (!ok || (mustBePositive && parsed <= 0))
+            return false;
+
+        result = static_cast<std::int64_t>(parsed);
+        return true;
+    };
+
+    std::vector<Account> accounts;
+    std::vector<Transaction> transactions;
+    std::vector<Budget> budgets;
+
+    try {
+        const QJsonArray accountArray = root.value("accounts").toArray();
+        const QJsonArray transactionArray = root.value("transactions").toArray();
+        const QJsonArray budgetArray = root.value("budgets").toArray();
+
+        for (const QJsonValue& value : accountArray) {
+            if (!value.isObject())
+                throw std::runtime_error("An account entry is not an object.");
+
+            const QJsonObject item = value.toObject();
+            int id = 0;
+            QString name, type;
+            std::int64_t balance = 0;
+
+            if (!readInt(item, "id", id, 1,
+                         std::numeric_limits<int>::max()) ||
+                !readString(item, "name", name, false) ||
+                !readString(item, "type", type, false) ||
+                !readPaise(item, "initialBalancePaise", balance, false)) {
+                throw std::runtime_error(
+                    "An account entry contains missing or invalid fields.");
+            }
+
+            accounts.emplace_back(
+                id, name.toStdString(), type.toStdString(), balance);
+        }
+
+        for (const QJsonValue& value : transactionArray) {
+            if (!value.isObject())
+                throw std::runtime_error(
+                    "A transaction entry is not an object.");
+
+            const QJsonObject item = value.toObject();
+            int id = 0, accountId = 0;
+            std::int64_t amount = 0;
+            QString type, category, description, date;
+
+            if (!readInt(item, "id", id, 1,
+                         std::numeric_limits<int>::max()) ||
+                !readInt(item, "accountId", accountId, 1,
+                         std::numeric_limits<int>::max()) ||
+                !readPaise(item, "amountPaise", amount, true) ||
+                !readString(item, "type", type, false) ||
+                !readString(item, "category", category, false) ||
+                !readString(item, "description", description, false) ||
+                !readString(item, "date", date, false)) {
+                throw std::runtime_error(
+                    "A transaction entry contains missing or invalid fields.");
+            }
+
+            const QDate parsedDate = QDate::fromString(date, Qt::ISODate);
+            if (!parsedDate.isValid() ||
+                parsedDate.toString(Qt::ISODate) != date) {
+                throw std::runtime_error(
+                    "A transaction contains an invalid ISO date.");
+            }
+
+            TransactionType transactionType;
+            if (type == "income") {
+                transactionType = TransactionType::Income;
+            } else if (type == "expense") {
+                transactionType = TransactionType::Expense;
+            } else {
+                throw std::runtime_error(
+                    "A transaction has an unsupported type.");
+            }
+
+            transactions.emplace_back(
+                id, accountId, amount, transactionType,
+                category.toStdString(), description.toStdString(),
+                date.toStdString());
+        }
+
+        for (const QJsonValue& value : budgetArray) {
+            if (!value.isObject())
+                throw std::runtime_error("A budget entry is not an object.");
+
+            const QJsonObject item = value.toObject();
+            int id = 0, month = 0, year = 0;
+            QString category;
+            std::int64_t limit = 0;
+
+            if (!readInt(item, "id", id, 1,
+                         std::numeric_limits<int>::max()) ||
+                !readString(item, "category", category, false) ||
+                !readInt(item, "month", month, 1, 12) ||
+                !readInt(item, "year", year, 1, 9999) ||
+                !readPaise(item, "limitPaise", limit, true)) {
+                throw std::runtime_error(
+                    "A budget entry contains missing or invalid fields.");
+            }
+
+            budgets.emplace_back(
+                id, category.toStdString(), month, year, limit);
+        }
+    } catch (const std::exception& exception) {
+        QMessageBox::warning(
+            this, "Restore failed",
+            QString("The backup could not be validated:\n%1")
+                .arg(QString::fromUtf8(exception.what())));
+        return;
+    }
+
+    const auto choice = QMessageBox::question(
+        this,
+        "Confirm restore",
+        "This will replace all accounts, transactions, and budgets "
+        "in the SQLite database. Continue only if you trust this backup "
+        "and have saved any data you need to keep.",
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+
+    if (choice != QMessageBox::Yes)
+        return;
+
+    std::string restoreError;
+    if (!m_backupRestoreService.replaceAll(
+            accounts, transactions, budgets, restoreError)) {
+        QMessageBox::warning(
+            this, "Restore failed",
+            QString("The database was not restored:\n%1")
+                .arg(QString::fromStdString(restoreError)));
+        return;
+    }
+
+    // Refresh all views from the restored database.
+    refreshAccountsTable();
+    refreshStatementAccountCombo();
+    refreshTransactionsTable();
+    refreshBudgetsTable();
+    refreshDashboard();
+
+    QMessageBox::information(
+        this, "Restore complete",
+        "The backup was restored to SQLite successfully.");
 }
 
 QWidget *MainWindow::buildPlaceholderPage(const QString &title,

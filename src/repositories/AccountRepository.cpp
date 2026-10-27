@@ -330,3 +330,73 @@ bool AccountRepository::remove(int id, std::string& error)
     error.clear();
     return true;
 }
+
+
+bool AccountRepository::addRestored(
+    const Account& account,
+    std::string& error)
+{
+    if (!m_database.isOpen()) {
+        error = "Cannot restore account: database is not open.";
+        return false;
+    }
+
+    if (account.getId() <= 0) {
+        error = "Restored account ID must be positive.";
+        return false;
+    }
+
+    const char* sql =
+        "INSERT INTO accounts "
+        "(name, type, initial_balance_paise, id) "
+        "VALUES (?, ?, ?, ?);";
+
+    Statement statement(nullptr, sqlite3_finalize);
+
+    if (!prepareStatement(
+            m_database.handle(), sql, statement, error)) {
+        return false;
+    }
+
+    int result = sqlite3_bind_text(
+        statement.get(), 1,
+        account.getName().c_str(), -1, SQLITE_TRANSIENT);
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    result = sqlite3_bind_text(
+        statement.get(), 2,
+        account.getType().c_str(), -1, SQLITE_TRANSIENT);
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    result = sqlite3_bind_int64(
+        statement.get(), 3, account.getInitialBalancePaise());
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    result = sqlite3_bind_int(
+        statement.get(), 4, account.getId());
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    error.clear();
+    return true;
+}

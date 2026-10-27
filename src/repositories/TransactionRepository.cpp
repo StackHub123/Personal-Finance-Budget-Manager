@@ -476,3 +476,55 @@ bool TransactionRepository::remove(int id, std::string& error)
     error.clear();
     return true;
 }
+
+
+bool TransactionRepository::addRestored(
+    const Transaction& transaction,
+    std::string& error)
+{
+    if (!m_database.isOpen()) {
+        error = "Cannot restore transaction: database is not open.";
+        return false;
+    }
+
+    if (transaction.getId() <= 0) {
+        error = "Restored transaction ID must be positive.";
+        return false;
+    }
+
+    const char* sql =
+        "INSERT INTO transactions "
+        "(account_id, amount_paise, type, category, description, "
+        "transaction_date, id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?);";
+
+    Statement statement(nullptr, sqlite3_finalize);
+
+    if (!prepareStatement(
+            m_database.handle(), sql, statement, error)) {
+        return false;
+    }
+
+    // Bind the usual six transaction fields using the existing
+    // repository validation and mapping helper.
+    if (!bindTransactionFields(
+            statement.get(), transaction, m_database.handle(), error)) {
+        return false;
+    }
+
+    const int result = sqlite3_bind_int(
+        statement.get(), 7, transaction.getId());
+
+    if (result != SQLITE_OK) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
+        error = sqlite3_errmsg(m_database.handle());
+        return false;
+    }
+
+    error.clear();
+    return true;
+}

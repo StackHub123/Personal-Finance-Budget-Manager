@@ -31,6 +31,9 @@ public:
     // Delete a budget by ID.
     bool remove(int id, std::string& error);
 
+    // Restore a budget with its original database ID.
+    bool addRestored(const Budget& budget, std::string& error);
+
 private:
     DatabaseManager& m_database;
 };
