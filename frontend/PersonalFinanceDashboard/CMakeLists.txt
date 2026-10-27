@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(PersonalFinanceFrontend VERSION 0.1 LANGUAGES CXX)
+project(PersonalFinanceFrontend VERSION 0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,7 +9,6 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets)
-find_package(SQLite3 REQUIRED)
 
 # Project root: Personal-Finance-Budget-Manager/
 get_filename_component(
@@ -22,6 +21,7 @@ qt_add_executable(PersonalFinanceFrontend
     main.cpp
     mainwindow.h
     mainwindow.cpp
+    "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100/sqlite3.c"
 
     # Domain models
     "${PROJECT_ROOT}/include/models/Account.h"
@@ -61,10 +61,10 @@ qt_add_executable(PersonalFinanceFrontend
 target_include_directories(PersonalFinanceFrontend
     PRIVATE
         "${PROJECT_ROOT}/include"
+        "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100"
 )
 
 target_link_libraries(PersonalFinanceFrontend
     PRIVATE
         Qt6::Widgets
-        SQLite::SQLite3
 )
