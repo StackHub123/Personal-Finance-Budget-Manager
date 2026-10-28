@@ -68,10 +68,17 @@ bool BackupRestoreService::replaceAll(
         }
 
         if (budget.getCategory().empty() ||
+            budget.getAccountId() < 0 ||
             budget.getMonth() < 1 || budget.getMonth() > 12 ||
             budget.getYear() <= 0 ||
             budget.getLimitPaise() <= 0) {
             error = "Backup contains an invalid budget.";
+            return false;
+        }
+
+        if (budget.getAccountId() != 0 &&
+            accountIds.find(budget.getAccountId()) == accountIds.end()) {
+            error = "A budget references an account missing from the backup.";
             return false;
         }
     }

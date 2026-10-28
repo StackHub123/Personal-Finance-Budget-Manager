@@ -56,6 +56,8 @@ void verifyRestoredData(
 
     require(budgets[0].getId() == 301,
             "The restored budget ID was not preserved.");
+    require(budgets[0].getAccountId() == 101,
+            "The restored budget account association was not preserved.");
     require(budgets[0].getCategory() == "Travel",
             "The restored budget category is incorrect.");
     require(budgets[0].getLimitPaise() == 80000,
@@ -119,7 +121,7 @@ int main()
         };
 
         const std::vector<Budget> restoredBudgets = {
-            Budget(301, "Travel", 10, 2026, 80000)
+            Budget(301, 101, "Travel", 10, 2026, 80000)
         };
 
         // Test 1: a successful restore replaces all records.
@@ -156,8 +158,8 @@ int main()
         };
 
         const std::vector<Budget> duplicateBudgets = {
-            Budget(302, "Duplicate", 11, 2026, 10000),
-            Budget(303, "Duplicate", 11, 2026, 15000)
+            Budget(302, 102, "Duplicate", 11, 2026, 10000),
+            Budget(303, 102, "Duplicate", 11, 2026, 15000)
         };
 
         error.clear();
@@ -202,7 +204,7 @@ int main()
                 error);
 
         require(!invalidRestoreSucceeded,
-                "Restore should reject a missing account reference.");
+                "Restore should reject a missing transaction account reference.");
 
         verifyRestoredData(
             accountRepository,
@@ -210,7 +212,23 @@ int main()
             budgetRepository);
 
         std::cout
-            << "Test 3 passed: invalid account reference was rejected "
+            << "Test 3 passed: invalid transaction account reference was rejected "
+               "without changing existing records.\n";
+
+        const std::vector<Budget> invalidAccountBudgets = {
+            Budget(304, 999, "Missing account budget", 12, 2026, 10000)
+        };
+        error.clear();
+        const bool invalidBudgetRestoreSucceeded = restoreService.replaceAll(
+            invalidAccounts, {}, invalidAccountBudgets, error);
+        require(!invalidBudgetRestoreSucceeded,
+                "Restore should reject a budget referencing a missing account.");
+        verifyRestoredData(
+            accountRepository,
+            transactionRepository,
+            budgetRepository);
+        std::cout
+            << "Test 4 passed: invalid budget account reference was rejected "
                "without changing existing records.\n";
 
         std::cout << "\nAll BackupRestoreService tests passed!\n";

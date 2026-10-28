@@ -48,6 +48,9 @@ private:
                              const QString &detail);
     void navigateTo(int pageIndex);
     void refreshAccountsTable();
+    void refreshActiveAccountCombo();
+    void activeAccountChanged(int index);
+    void refreshAccountScopedViews();
     void createAccount();
     void viewAccounts();
     void editAccount();
@@ -87,6 +90,8 @@ private:
     QButtonGroup *m_navigationGroup = nullptr;
     QLabel *m_pageTitle = nullptr;
     QLabel *m_statusLabel = nullptr;
+    QComboBox *m_activeAccountCombo = nullptr;
+    int m_activeAccountId = 0;
     QTableWidget *m_accountsTable = nullptr;
     QFrame *m_emptyState = nullptr;
     QPushButton *m_editAccountButton = nullptr;
@@ -153,6 +158,8 @@ private:
 
     struct BudgetRecord {
         int id = 0;
+        int accountId = 0; // 0 means a legacy budget not yet assigned
+        QString accountName;
         QString category;
         double limit = 0.0;
         QString month; // YYYY-MM
@@ -167,6 +174,7 @@ private:
     QComboBox *m_reportPeriodCombo = nullptr;
     QTableWidget *m_reportTable = nullptr;
     QLabel *m_reportSummary = nullptr;
+    bool m_reportWasGenerated = false;
 };
 
 #endif // MAINWINDOW_H

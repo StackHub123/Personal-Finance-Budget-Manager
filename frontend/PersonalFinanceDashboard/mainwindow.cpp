@@ -33,6 +33,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSignalBlocker>
+#include <QSettings>
 #include <QTextStream>
 #include <QDate>
 #include <QSet>
@@ -84,6 +85,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
     QCoreApplication::setOrganizationName("PFBM");
     QCoreApplication::setApplicationName("PersonalFinanceDashboard");
+    QSettings settings;
+    m_activeAccountId = settings.value("dashboard/activeAccountId", 0).toInt();
 
     const QString dataDirectory =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -132,9 +135,18 @@ MainWindow::MainWindow(QWidget *parent)
     header->addLayout(headingColumn);
     header->addStretch();
 
-    auto *periodLabel = makeLabel("OVERVIEW  ·  DEMO DATA");
-    periodLabel->setObjectName("periodTag");
-    header->addWidget(periodLabel, 0, Qt::AlignTop);
+    auto *activeAccountLabel = makeLabel("ACTIVE ACCOUNT", "periodTag");
+    header->addWidget(activeAccountLabel, 0, Qt::AlignVCenter);
+    m_activeAccountCombo = new QComboBox;
+    m_activeAccountCombo->setObjectName("activeAccountCombo");
+    m_activeAccountCombo->setMinimumWidth(190);
+    m_activeAccountCombo->setMaximumWidth(270);
+    m_activeAccountCombo->setToolTip(
+        "Choose the account whose transactions, budgets, dashboard and reports you are viewing.");
+    header->addWidget(m_activeAccountCombo, 0, Qt::AlignVCenter);
+    connect(m_activeAccountCombo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::activeAccountChanged);
     mainLayout->addLayout(header);
 
     m_pages = new QStackedWidget;
@@ -228,12 +240,28 @@ QWidget *MainWindow::buildDashboardPage()
     auto *welcome = new QFrame; welcome->setObjectName("welcomePanel");
     auto *wl = new QVBoxLayout(welcome); wl->setContentsMargins(22, 20, 22, 20);
     wl->addWidget(makeLabel("Your finances at a glance", "welcomeTitle"));
-    auto *welcomeText = makeLabel("Figures are calculated from the accounts, transactions and budgets currently in this session. Export a backup from Utilities to keep a copy.", "welcomeText");
+    QString activeAccountName = "No account selected";
+    for (const auto &account : m_accounts) {
+        if (account.id == m_activeAccountId) {
+            activeAccountName = account.name;
+            break;
+        }
+    }
+    const QString welcomeMessage = m_activeAccountId > 0
+        ? QString("Showing finances for %1. Dashboard figures, recent activity and budget usage are limited to this account. Export a backup from Utilities to keep a copy.").arg(activeAccountName)
+        : "Create an account to begin tracking your finances.";
+    auto *welcomeText = makeLabel(welcomeMessage, "welcomeText");
     welcomeText->setWordWrap(true); wl->addWidget(welcomeText); layout->addWidget(welcome);
 
     double accountBalance=0, income=0, expenses=0;
-    for (const auto &a : m_accounts) accountBalance += a.balance;
-    for (const auto &t : m_transactions) { if(t.type=="Income") income+=t.amount; else expenses+=t.amount; }
+    for (const auto &a : m_accounts) {
+        if (a.id == m_activeAccountId)
+            accountBalance += a.balance;
+    }
+    for (const auto &t : m_transactions) {
+        if (t.accountId != m_activeAccountId) continue;
+        if(t.type=="Income") income+=t.amount; else expenses+=t.amount;
+    }
     const double currentBalance = accountBalance + income - expenses;
     auto *metrics = new QHBoxLayout; metrics->setSpacing(12);
     metrics->addWidget(buildMetricCard("CURRENT BALANCE", QString("₹ %1").arg(currentBalance,0,'f',2), "Opening balances + transactions"));
@@ -250,7 +278,11 @@ QWidget *MainWindow::buildDashboardPage()
     activity->setHorizontalHeaderLabels({"Date","Description","Category","Amount"});
     activity->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     activity->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    QVector<TransactionRecord> recent=m_transactions;
+    QVector<TransactionRecord> recent;
+    for (const auto &transaction : m_transactions) {
+        if (transaction.accountId == m_activeAccountId)
+            recent.append(transaction);
+    }
     std::sort(recent.begin(),recent.end(),[](const TransactionRecord &a,const TransactionRecord &b){return a.date>b.date;});
     for(int i=0;i<qMin(5,recent.size());++i){const auto &t=recent[i];int r=activity->rowCount();activity->insertRow(r);activity->setItem(r,0,new QTableWidgetItem(t.date));activity->setItem(r,1,new QTableWidgetItem(t.description));activity->setItem(r,2,new QTableWidgetItem(t.category));activity->setItem(r,3,new QTableWidgetItem(QString("%1 ₹ %2").arg(t.type=="Income"?"+":"−").arg(t.amount,0,'f',2)));}
     if(recent.isEmpty()) al->addWidget(makeLabel("No transactions yet. Add income or an expense to see your activity.","panelHint"));
@@ -260,11 +292,43 @@ QWidget *MainWindow::buildDashboardPage()
     auto *bl = new QVBoxLayout(budgetPanel); bl->setContentsMargins(18,18,18,18);
     bl->addWidget(makeLabel("Budget usage", "panelTitle"));
     bool overBudget=false;
-    for(const auto &b:m_budgets){
-        double spent=0;for(const auto &t:m_transactions)if(t.type=="Expense"&&t.category.compare(b.category,Qt::CaseInsensitive)==0&&t.date.left(7)==b.month)spent+=t.amount;
-        auto *label=makeLabel(QString("%1 · ₹ %2 / ₹ %3").arg(b.category).arg(spent,0,'f',2).arg(b.limit,0,'f',2),"budgetRowTitle");label->setWordWrap(true);bl->addWidget(label);
-        auto *bar=new QProgressBar;bar->setRange(0,100);bar->setValue(b.limit>0?qBound(0,static_cast<int>(spent/b.limit*100),100):0);bar->setFormat("%p% used");bl->addWidget(bar);
-        if(spent>b.limit){overBudget=true;auto *warning=makeLabel("Over budget: "+b.category,"panelHint");warning->setStyleSheet("color:#b42318;font-weight:700;");bl->addWidget(warning);}
+    for (const auto &b : m_budgets) {
+        if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId)
+            continue;
+        double spent = 0;
+        for (const auto &t : m_transactions) {
+            if (t.accountId == b.accountId &&
+                t.type == "Expense" &&
+                t.category.compare(b.category, Qt::CaseInsensitive) == 0 &&
+                t.date.left(7) == b.month) {
+                spent += t.amount;
+            }
+        }
+
+        const QString budgetLabel = QString("%1 · %2 · ₹ %3 / ₹ %4")
+            .arg(b.accountName, b.category)
+            .arg(spent, 0, 'f', 2)
+            .arg(b.limit, 0, 'f', 2);
+        auto *label = makeLabel(budgetLabel, "budgetRowTitle");
+        label->setWordWrap(true);
+        bl->addWidget(label);
+
+        auto *bar = new QProgressBar;
+        bar->setRange(0, 100);
+        bar->setValue(b.limit > 0
+            ? qBound(0, static_cast<int>(spent / b.limit * 100), 100)
+            : 0);
+        bar->setFormat("%p% used");
+        bl->addWidget(bar);
+
+        if (spent > b.limit) {
+            overBudget = true;
+            auto *warning = makeLabel(
+                QString("Over budget: %1 · %2").arg(b.accountName, b.category),
+                "panelHint");
+            warning->setStyleSheet("color:#b42318;font-weight:700;");
+            bl->addWidget(warning);
+        }
     }
     if(m_budgets.isEmpty())bl->addWidget(makeLabel("No budgets yet. Create a budget to track category spending.","panelHint"));
     if(!overBudget&&!m_budgets.isEmpty())bl->addWidget(makeLabel("No budgets are over their limits.","panelHint"));
@@ -445,7 +509,75 @@ void MainWindow::refreshAccountsTable()
     if (m_deleteAccountButton)
         m_deleteAccountButton->setEnabled(false);
 
+    refreshActiveAccountCombo();
     refreshStatementAccountCombo();
+}
+
+void MainWindow::refreshActiveAccountCombo()
+{
+    if (!m_activeAccountCombo)
+        return;
+
+    const QSignalBlocker blocker(m_activeAccountCombo);
+    m_activeAccountCombo->clear();
+
+    if (m_accounts.isEmpty()) {
+        m_activeAccountCombo->addItem("No accounts available", 0);
+        m_activeAccountCombo->setEnabled(false);
+        m_activeAccountId = 0;
+        QSettings settings;
+        settings.setValue("dashboard/activeAccountId", 0);
+        return;
+    }
+
+    m_activeAccountCombo->setEnabled(true);
+    for (const AccountRecord &account : m_accounts)
+        m_activeAccountCombo->addItem(account.name, account.id);
+
+    int selectedIndex = m_activeAccountCombo->findData(m_activeAccountId);
+    if (selectedIndex < 0)
+        selectedIndex = 0;
+
+    m_activeAccountCombo->setCurrentIndex(selectedIndex);
+    m_activeAccountId = m_activeAccountCombo->currentData().toInt();
+
+    QSettings settings;
+    settings.setValue("dashboard/activeAccountId", m_activeAccountId);
+}
+
+void MainWindow::activeAccountChanged(int index)
+{
+    Q_UNUSED(index);
+    if (!m_activeAccountCombo)
+        return;
+
+    const int selectedAccountId = m_activeAccountCombo->currentData().toInt();
+    if (selectedAccountId <= 0 || selectedAccountId == m_activeAccountId)
+        return;
+
+    if (!m_statementPath.isEmpty())
+        clearStatementPreview(
+            "The active account changed. Choose the statement again to preview it for the new account.");
+
+    m_activeAccountId = selectedAccountId;
+    QSettings settings;
+    settings.setValue("dashboard/activeAccountId", m_activeAccountId);
+
+    refreshAccountScopedViews();
+
+    QString accountName = m_activeAccountCombo->currentText();
+    if (m_statusLabel)
+        m_statusLabel->setText(
+            QString("SQLite connected • Active account: %1").arg(accountName));
+}
+
+void MainWindow::refreshAccountScopedViews()
+{
+    refreshTransactionsTable();
+    refreshBudgetsTable();
+    refreshDashboard();
+    if (m_reportWasGenerated)
+        runReport();
 }
 
 void MainWindow::showAccountMessage(const QString &message, bool success)
@@ -555,15 +687,8 @@ void MainWindow::createAccount()
             return;
         }
 
-        const int createdId = account.getId();
-
         refreshAccountsTable();
-
-        if (m_statementAccountCombo) {
-            const int index = m_statementAccountCombo->findData(createdId);
-            if (index >= 0)
-                m_statementAccountCombo->setCurrentIndex(index);
-        }
+        refreshAccountScopedViews();
 
         showAccountMessage(
             QString("'%1' was saved successfully.").arg(name), true);
@@ -683,6 +808,7 @@ void MainWindow::editAccount()
         }
 
         refreshAccountsTable();
+        refreshAccountScopedViews();
 
         showAccountMessage(
             QString("'%1' was updated successfully.").arg(name), true);
@@ -744,6 +870,7 @@ void MainWindow::deleteAccount()
     }
 
     refreshAccountsTable();
+    refreshAccountScopedViews();
 
     showAccountMessage(
         QString("Account '%1' deleted successfully.").arg(name), true);
@@ -773,10 +900,10 @@ QWidget *MainWindow::buildImportStatementsPage()
     auto *accountForm = new QFormLayout;
     m_statementAccountCombo = new QComboBox;
     m_statementAccountCombo->setObjectName("statementAccountCombo");
-    accountForm->addRow("Import transactions into account", m_statementAccountCombo);
+    accountForm->addRow("Active import account", m_statementAccountCombo);
     layout->addLayout(accountForm);
     m_statementAccountNotice = makeLabel(
-        "Create an account first, then select it here before choosing a statement.", "panelHint");
+        "Imported transactions are saved to the active account. Change the active account at the top before choosing a statement.", "panelHint");
     m_statementAccountNotice->setWordWrap(true);
     layout->addWidget(m_statementAccountNotice);
 
@@ -884,29 +1011,29 @@ void MainWindow::refreshStatementAccountCombo()
     if (!m_statementAccountCombo)
         return;
 
-    const bool hadPreviousSelection = m_statementAccountCombo->currentIndex() > 0;
-    const int previousAccountId = hadPreviousSelection
-                                      ? m_statementAccountCombo->currentData().toInt() : -1;
     const QSignalBlocker blocker(m_statementAccountCombo);
     m_statementAccountCombo->clear();
     m_statementAccountCombo->addItem("Select an account...", -1);
     for (const AccountRecord &account : m_accounts)
         m_statementAccountCombo->addItem(account.name, account.id);
 
-    int selectedIndex = 0; // Explicit selection is required; index 0 is the placeholder.
-    if (hadPreviousSelection) {
-        for (int i = 1; i < m_statementAccountCombo->count(); ++i) {
-            if (m_statementAccountCombo->itemData(i).toInt() == previousAccountId) {
-                selectedIndex = i;
-                break;
-            }
-        }
-    }
+    int selectedIndex = m_statementAccountCombo->findData(m_activeAccountId);
+    if (selectedIndex < 0)
+        selectedIndex = 0;
     m_statementAccountCombo->setCurrentIndex(selectedIndex);
+
+    const int selectedAccountId = m_statementAccountCombo->currentData().toInt();
+    if (!m_statementPath.isEmpty() && m_statementAccountId > 0 &&
+        selectedAccountId != m_statementAccountId) {
+        clearStatementPreview(
+            "The active account changed. Choose the statement again to preview it for that account.");
+    }
 
     const bool hasAccounts = !m_accounts.isEmpty();
     const bool hasSelectedAccount = m_statementAccountCombo->currentIndex() > 0;
-    m_statementAccountCombo->setEnabled(hasAccounts);
+    m_statementAccountCombo->setEnabled(false);
+    m_statementAccountCombo->setToolTip(
+        "The import target is controlled by the Active Account selector at the top of the application.");
     // Keep the button clickable so a first-time user gets a clear explanation
     // instead of assuming the file picker is broken. chooseStatementFile()
     // validates that an account has been selected before opening the picker.
@@ -921,14 +1048,10 @@ void MainWindow::refreshStatementAccountCombo()
         m_confirmImportButton->setEnabled(hasSelectedAccount && !m_statementRows.isEmpty());
     if (m_statementAccountNotice) {
         m_statementAccountNotice->setText(hasAccounts
-            ? "Every imported transaction will be linked to the selected account. If this account is wrong, choose the correct one before selecting the file."
+            ? QString("Every imported transaction will be linked to the active account: %1. Change the Active Account selector at the top if needed.").arg(m_statementAccountCombo->currentText())
             : "No accounts exist yet. Open Accounts and create a bank account or cash wallet first. Statement import is disabled until an account exists.");
     }
 
-    // If the previously selected account was deleted, discard its preview rather than
-    // accidentally importing those rows into a different account.
-    if (!m_statementPath.isEmpty() && hadPreviousSelection && selectedIndex == 0)
-        clearStatementPreview("The account used for this preview no longer exists. Select an existing account and choose the statement again.");
 }
 
 void MainWindow::clearStatementPreview(const QString &message)
@@ -1505,6 +1628,7 @@ void MainWindow::refreshTransactionsTable()
     const QString search = m_transactionSearch ? m_transactionSearch->text().trimmed().toLower() : QString();
     const QString typeFilter = m_transactionTypeFilter ? m_transactionTypeFilter->currentText() : "All types";
     for (const auto &t : m_transactions) {
+        if (m_activeAccountId <= 0 || t.accountId != m_activeAccountId) continue;
         if (typeFilter != "All types" && t.type != typeFilter) continue;
         if (!search.isEmpty() && !t.description.toLower().contains(search) && !t.category.toLower().contains(search)) continue;
         QString accountName = "Unknown account";
@@ -1550,6 +1674,12 @@ void MainWindow::addTransaction(bool income)
     amount->setPrefix("₹ ");
     auto *account = new QComboBox;
     for (const auto &a : m_accounts) account->addItem(a.name, a.id);
+    const int activeAccountIndex = account->findData(m_activeAccountId);
+    if (activeAccountIndex >= 0)
+        account->setCurrentIndex(activeAccountIndex);
+    account->setEnabled(false);
+    account->setToolTip(
+        "Transactions are recorded in the Active Account selected at the top of the application.");
     form->addRow("Date", date);
     form->addRow("Description", description);
     form->addRow("Category", category);
@@ -1570,7 +1700,12 @@ void MainWindow::addTransaction(bool income)
         return;
     }
 
-    const int accountId = account->currentData().toInt();
+    const int accountId = m_activeAccountId;
+    if (accountId <= 0) {
+        QMessageBox::warning(this, "Select an account",
+                             "Choose or create an active account before recording a transaction.");
+        return;
+    }
     const QString transactionDate = date->date().toString(Qt::ISODate);
     const QString transactionDescription = description->text().trimmed();
     const QString transactionCategory = category->currentText().trimmed();
@@ -1631,7 +1766,10 @@ void MainWindow::editTransaction()
     auto *amount = new QDoubleSpinBox; amount->setRange(0.01, 999999999.99); amount->setDecimals(2); amount->setPrefix("₹ "); amount->setValue(t.amount);
     auto *account = new QComboBox;
     for (const auto &a : m_accounts) account->addItem(a.name, a.id);
-    account->setCurrentIndex(qMax(0, account->findData(t.accountId)));
+    account->setCurrentIndex(qMax(0, account->findData(m_activeAccountId)));
+    account->setEnabled(false);
+    account->setToolTip(
+        "The transaction belongs to the Active Account selected at the top of the application.");
     form->addRow("Date", date); form->addRow("Description", description); form->addRow("Category", category); form->addRow("Amount", amount); form->addRow("Account", account);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); form->addRow(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -1646,7 +1784,7 @@ void MainWindow::editTransaction()
     const QString updatedDate = date->date().toString(Qt::ISODate);
     const QString updatedDescription = description->text().trimmed();
     const QString updatedCategory = category->text().trimmed();
-    const int updatedAccountId = account->currentData().toInt();
+    const int updatedAccountId = m_activeAccountId;
 
     const auto updatedAmountPaise = static_cast<std::int64_t>(
         std::llround(amount->value() * 100.0));
@@ -1730,8 +1868,8 @@ QWidget *MainWindow::buildBudgetsPage()
     m_editBudgetButton = new QPushButton("Edit selected"); m_editBudgetButton->setObjectName("secondaryActionButton"); m_editBudgetButton->setEnabled(false);
     m_deleteBudgetButton = new QPushButton("Delete selected"); m_deleteBudgetButton->setObjectName("dangerActionButton"); m_deleteBudgetButton->setEnabled(false);
     actions->addWidget(create); actions->addWidget(m_editBudgetButton); actions->addWidget(m_deleteBudgetButton); actions->addStretch(); layout->addLayout(actions);
-    m_budgetsTable = new QTableWidget(0, 6); m_budgetsTable->setObjectName("accountsTable");
-    m_budgetsTable->setHorizontalHeaderLabels({"Month", "Category", "Budget limit", "Spent", "Remaining", "Status"});
+    m_budgetsTable = new QTableWidget(0, 7); m_budgetsTable->setObjectName("accountsTable");
+    m_budgetsTable->setHorizontalHeaderLabels({"Account", "Month", "Category", "Budget limit", "Spent", "Remaining", "Status"});
     m_budgetsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_budgetsTable->setSelectionBehavior(QAbstractItemView::SelectRows); m_budgetsTable->setSelectionMode(QAbstractItemView::SingleSelection); m_budgetsTable->setEditTriggers(QAbstractItemView::NoEditTriggers); m_budgetsTable->setAlternatingRowColors(true);
     layout->addWidget(m_budgetsTable, 1);
@@ -1774,6 +1912,16 @@ void MainWindow::refreshBudgetsTable()
 
         BudgetRecord record;
         record.id = budget.getId();
+        record.accountId = budget.getAccountId();
+        record.accountName = record.accountId == 0
+            ? "Unassigned"
+            : QString("Unknown account (%1)").arg(record.accountId);
+        for (const auto &account : m_accounts) {
+            if (account.id == record.accountId) {
+                record.accountName = account.name;
+                break;
+            }
+        }
         record.category = QString::fromStdString(budget.getCategory());
         record.limit =
             static_cast<double>(budget.getLimitPaise()) / 100.0;
@@ -1785,6 +1933,11 @@ void MainWindow::refreshBudgetsTable()
         if (record.id >= m_nextBudgetId)
             m_nextBudgetId = record.id + 1;
 
+        // Keep unassigned legacy budgets visible so the user can assign them,
+        // but show other accounts' assigned budgets only when that account is active.
+        if (record.accountId > 0 && record.accountId != m_activeAccountId)
+            continue;
+
         const int row = m_budgetsTable->rowCount();
         m_budgetsTable->insertRow(row);
 
@@ -1794,17 +1947,19 @@ void MainWindow::refreshBudgetsTable()
             static_cast<double>(status.remainingPaise) / 100.0;
 
         m_budgetsTable->setItem(
-            row, 0, new QTableWidgetItem(record.month));
+            row, 0, new QTableWidgetItem(record.accountName));
         m_budgetsTable->setItem(
-            row, 1, new QTableWidgetItem(record.category));
+            row, 1, new QTableWidgetItem(record.month));
         m_budgetsTable->setItem(
-            row, 2, new QTableWidgetItem(
-                QString("₹ %1").arg(record.limit, 0, 'f', 2)));
+            row, 2, new QTableWidgetItem(record.category));
         m_budgetsTable->setItem(
             row, 3, new QTableWidgetItem(
-                QString("₹ %1").arg(spent, 0, 'f', 2)));
+                QString("₹ %1").arg(record.limit, 0, 'f', 2)));
         m_budgetsTable->setItem(
             row, 4, new QTableWidgetItem(
+                QString("₹ %1").arg(spent, 0, 'f', 2)));
+        m_budgetsTable->setItem(
+            row, 5, new QTableWidgetItem(
                 QString("₹ %1").arg(remaining, 0, 'f', 2)));
 
         const QString budgetStatus = status.overBudget
@@ -1812,11 +1967,11 @@ void MainWindow::refreshBudgetsTable()
             : (spent >= record.limit * 0.8 ? "Near limit" : "On track");
 
         m_budgetsTable->setItem(
-            row, 5, new QTableWidgetItem(budgetStatus));
+            row, 6, new QTableWidgetItem(budgetStatus));
         m_budgetsTable->item(row, 0)->setData(Qt::UserRole, record.id);
 
         if (status.overBudget) {
-            for (int column = 0; column < 6; ++column)
+            for (int column = 0; column < 7; ++column)
                 m_budgetsTable->item(row, column)
                     ->setBackground(QColor("#fff0f0"));
         }
@@ -1830,15 +1985,71 @@ void MainWindow::refreshBudgetsTable()
 
 void MainWindow::addBudget()
 {
-    QDialog d(this); d.setWindowTitle("Create budget"); auto *f = new QFormLayout(&d);
-    auto *category = new QComboBox; category->setEditable(true); category->addItems({"Food & groceries", "Transport", "Housing", "Entertainment", "Health", "Education", "Utilities", "Other"});
-    auto *limit = new QDoubleSpinBox; limit->setRange(0.01, 999999999.99); limit->setDecimals(2); limit->setPrefix("₹ ");
-    auto *month = new QDateEdit(QDate::currentDate()); month->setDisplayFormat("MMMM yyyy"); month->setCalendarPopup(true);
-    f->addRow("Category", category); f->addRow("Monthly limit", limit); f->addRow("Month", month);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel); f->addRow(buttons);
-    connect(buttons,&QDialogButtonBox::accepted,&d,&QDialog::accept); connect(buttons,&QDialogButtonBox::rejected,&d,&QDialog::reject);
-    if (d.exec()!=QDialog::Accepted) return;
-    if (category->currentText().trimmed().isEmpty() || limit->value() <= 0) { QMessageBox::warning(this,"Invalid budget","Enter a category and a positive limit."); return; }
+    if (m_accounts.isEmpty()) {
+        QMessageBox::information(
+            this, "Create an account first",
+            "Create an account before setting a budget.");
+        return;
+    }
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Create budget");
+    auto *form = new QFormLayout(&dialog);
+
+    auto *account = new QComboBox;
+    account->addItem("Select an account...", 0);
+    for (const auto &item : m_accounts)
+        account->addItem(item.name, item.id);
+    const int activeAccountIndex = account->findData(m_activeAccountId);
+    if (activeAccountIndex >= 0)
+        account->setCurrentIndex(activeAccountIndex);
+    account->setEnabled(false);
+    account->setToolTip(
+        "The budget is created for the Active Account selected at the top of the application.");
+
+    auto *category = new QComboBox;
+    category->setEditable(true);
+    category->addItems({
+        "Food & groceries", "Transport", "Housing", "Entertainment",
+        "Health", "Education", "Utilities", "Other"});
+
+    auto *limit = new QDoubleSpinBox;
+    limit->setRange(0.01, 999999999.99);
+    limit->setDecimals(2);
+    limit->setPrefix("₹ ");
+
+    auto *month = new QDateEdit(QDate::currentDate());
+    month->setDisplayFormat("MMMM yyyy");
+    month->setCalendarPopup(true);
+
+    form->addRow("Account", account);
+    form->addRow("Category", category);
+    form->addRow("Monthly limit", limit);
+    form->addRow("Month", month);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted,
+            &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected,
+            &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    const int accountId = m_activeAccountId;
+    if (accountId <= 0) {
+        QMessageBox::warning(
+            this, "Select an account",
+            "Choose or create an active account before creating a budget.");
+        return;
+    }
+    if (category->currentText().trimmed().isEmpty() || limit->value() <= 0) {
+        QMessageBox::warning(
+            this, "Invalid budget", "Enter a category and a positive limit.");
+        return;
+    }
     if (!m_databaseReady) {
         QMessageBox::warning(
             this, "Database unavailable", m_databaseError);
@@ -1847,14 +2058,13 @@ void MainWindow::addBudget()
 
     const QDate selectedMonth = month->date();
     const QString selectedCategory = category->currentText().trimmed();
-
     const auto limitPaise = static_cast<std::int64_t>(
         std::llround(limit->value() * 100.0));
 
     int createdBudgetId = 0;
     std::string error;
-
     if (!m_budgetService.addBudget(
+            accountId,
             selectedCategory.toStdString(),
             selectedMonth.month(),
             selectedMonth.year(),
@@ -1862,30 +2072,82 @@ void MainWindow::addBudget()
             createdBudgetId,
             error)) {
         QMessageBox::warning(
-            this, "Budget not saved",
-            QString::fromStdString(error));
+            this, "Budget not saved", QString::fromStdString(error));
         return;
     }
 
     refreshBudgetsTable();
     refreshDashboard();
-
     QMessageBox::information(
         this, "Budget created",
         QString("Budget saved successfully (ID %1).")
             .arg(createdBudgetId));
 }
+
 void MainWindow::editBudget()
 {
-    int row=m_budgetsTable?m_budgetsTable->currentRow():-1; if(row<0)return;
-    int id=m_budgetsTable->item(row,0)->data(Qt::UserRole).toInt(); int idx=-1;
-    for(int i=0;i<m_budgets.size();++i)if(m_budgets[i].id==id)idx=i; if(idx<0)return;
-    auto &b=m_budgets[idx]; QDialog d(this); d.setWindowTitle("Edit budget"); auto *f=new QFormLayout(&d);
-    auto *category=new QLineEdit(b.category); auto *limit=new QDoubleSpinBox; limit->setRange(0.01,999999999.99); limit->setDecimals(2); limit->setPrefix("₹ "); limit->setValue(b.limit);
-    auto *month=new QDateEdit(QDate::fromString(b.month+"-01",Qt::ISODate)); month->setDisplayFormat("MMMM yyyy"); month->setCalendarPopup(true);
-    f->addRow("Category",category); f->addRow("Monthly limit",limit); f->addRow("Month",month);
-    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel); f->addRow(buttons); connect(buttons,&QDialogButtonBox::accepted,&d,&QDialog::accept); connect(buttons,&QDialogButtonBox::rejected,&d,&QDialog::reject);
-    if (d.exec() != QDialog::Accepted)
+    const int row = m_budgetsTable ? m_budgetsTable->currentRow() : -1;
+    if (row < 0)
+        return;
+
+    const int id = m_budgetsTable->item(row, 0)->data(Qt::UserRole).toInt();
+    int index = -1;
+    for (int i = 0; i < m_budgets.size(); ++i) {
+        if (m_budgets[i].id == id) {
+            index = i;
+            break;
+        }
+    }
+    if (index < 0)
+        return;
+
+    const BudgetRecord original = m_budgets[index];
+    QDialog dialog(this);
+    dialog.setWindowTitle("Edit budget");
+    auto *form = new QFormLayout(&dialog);
+
+    if (m_activeAccountId <= 0) {
+        QMessageBox::information(
+            this, "Create an account first",
+            "Create an account and select it as the active account before editing a budget.");
+        return;
+    }
+    auto *account = new QComboBox;
+    for (const auto &item : m_accounts)
+        account->addItem(item.name, item.id);
+    const int accountIndex = account->findData(m_activeAccountId);
+    if (accountIndex >= 0)
+        account->setCurrentIndex(accountIndex);
+    account->setEnabled(false);
+    account->setToolTip(
+        "Budget ownership follows the Active Account selector at the top of the application.");
+
+    auto *category = new QLineEdit(original.category);
+    auto *limit = new QDoubleSpinBox;
+    limit->setRange(0.01, 999999999.99);
+    limit->setDecimals(2);
+    limit->setPrefix("₹ ");
+    limit->setValue(original.limit);
+
+    auto *month = new QDateEdit(
+        QDate::fromString(original.month + "-01", Qt::ISODate));
+    month->setDisplayFormat("MMMM yyyy");
+    month->setCalendarPopup(true);
+
+    form->addRow("Account", account);
+    form->addRow("Category", category);
+    form->addRow("Monthly limit", limit);
+    form->addRow("Month", month);
+
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Save | QDialogButtonBox::Cancel);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted,
+            &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected,
+            &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
         return;
 
     if (category->text().trimmed().isEmpty()) {
@@ -1893,7 +2155,6 @@ void MainWindow::editBudget()
             this, "Invalid budget", "Category is required.");
         return;
     }
-
     if (!m_databaseReady) {
         QMessageBox::warning(
             this, "Database unavailable", m_databaseError);
@@ -1903,37 +2164,35 @@ void MainWindow::editBudget()
     const QDate selectedMonth = month->date();
     const auto limitPaise = static_cast<std::int64_t>(
         std::llround(limit->value() * 100.0));
+    const int accountId = account->currentData().toInt();
 
     try {
         Budget updatedBudget(
             id,
+            accountId,
             category->text().trimmed().toStdString(),
             selectedMonth.month(),
             selectedMonth.year(),
             limitPaise);
 
         std::string error;
-
         if (!m_budgetService.updateBudget(updatedBudget, error)) {
             QMessageBox::warning(
-                this, "Budget not updated",
-                QString::fromStdString(error));
+                this, "Budget not updated", QString::fromStdString(error));
             return;
         }
     } catch (const std::exception &exception) {
         QMessageBox::warning(
-            this, "Invalid budget",
-            QString::fromStdString(exception.what()));
+            this, "Invalid budget", QString::fromStdString(exception.what()));
         return;
     }
 
     refreshBudgetsTable();
     refreshDashboard();
-
     QMessageBox::information(
-        this, "Budget updated",
-        "Budget changes were saved to SQLite.");
+        this, "Budget updated", "Budget changes were saved to SQLite.");
 }
+
 void MainWindow::deleteBudget()
 {
     int row=m_budgetsTable?m_budgetsTable->currentRow():-1; if(row<0)return;
@@ -1978,30 +2237,79 @@ QWidget *MainWindow::buildReportsPage()
 void MainWindow::runReport()
 {
     if(!m_reportTable)return; m_reportTable->setRowCount(0);
+    m_reportWasGenerated = true;
     const QString type=m_reportTypeCombo->currentText(), period=m_reportPeriodCombo->currentText();
     const QString thisMonth=QDate::currentDate().toString("yyyy-MM"), lastMonth=QDate::currentDate().addMonths(-1).toString("yyyy-MM");
     auto inPeriod=[&](const QString &date){return period=="All time" || (period=="This month" && date.left(7)==thisMonth) || (period=="Last month" && date.left(7)==lastMonth);};
     auto add=[&](const QString &name,double amount,const QString &detail){int r=m_reportTable->rowCount();m_reportTable->insertRow(r);m_reportTable->setItem(r,0,new QTableWidgetItem(name));m_reportTable->setItem(r,1,new QTableWidgetItem(QString("₹ %1").arg(amount,0,'f',2)));m_reportTable->setItem(r,2,new QTableWidgetItem(detail));};
     double income=0,expense=0; QMap<QString,double> categories;
-    for(const auto &t:m_transactions)if(inPeriod(t.date)){if(t.type=="Income")income+=t.amount;else{expense+=t.amount;categories[t.category]+=t.amount;}}
+    int activeTransactionCount = 0;
+    for(const auto &t:m_transactions) {
+        if (t.accountId != m_activeAccountId || !inPeriod(t.date)) continue;
+        ++activeTransactionCount;
+        if(t.type=="Income")income+=t.amount;else{expense+=t.amount;categories[t.category]+=t.amount;}
+    }
     if(type=="Income and expenses"){add("Income",income,period);add("Expenses",expense,period);add("Net savings",income-expense,"Income minus expenses");}
     else if(type=="Category spending"){for(auto it=categories.cbegin();it!=categories.cend();++it)add(it.key(),it.value(),"Expense category");}
-    else if(type=="Budget status"){for(const auto &b:m_budgets){double spent=0;for(const auto &t:m_transactions)if(t.type=="Expense"&&t.category.compare(b.category,Qt::CaseInsensitive)==0&&t.date.left(7)==b.month)spent+=t.amount;add(b.category,spent,QString("Limit ₹ %1 · %2").arg(b.limit,0,'f',2).arg(spent>b.limit?"OVER BUDGET":"On track"));}}
-    else {for(const auto &a:m_accounts){double bal=a.balance;for(const auto &t:m_transactions)if(t.accountId==a.id)bal+=(t.type=="Income"?t.amount:-t.amount);add(a.name,bal,"Calculated session balance");}}
-    m_reportSummary->setText(QString("%1 · %2 · based on %3 transaction(s).").arg(type,period).arg(m_transactions.size()));
+    else if(type=="Budget status"){
+        for (const auto &b : m_budgets) {
+            if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId)
+                continue;
+            double spent = 0;
+            for (const auto &t : m_transactions) {
+                if (t.accountId == b.accountId && t.type == "Expense" &&
+                    t.category.compare(b.category, Qt::CaseInsensitive) == 0 &&
+                    t.date.left(7) == b.month) {
+                    spent += t.amount;
+                }
+            }
+            add(QString("%1 — %2").arg(b.accountName, b.category), spent,
+                QString("Limit ₹ %1 · %2")
+                    .arg(b.limit, 0, 'f', 2)
+                    .arg(spent > b.limit ? "OVER BUDGET" : "On track"));
+        }
+    }
+    else {
+        for (const auto &a : m_accounts) {
+            if (a.id != m_activeAccountId) continue;
+            double bal = a.balance;
+            for (const auto &t : m_transactions) {
+                if (t.accountId == a.id)
+                    bal += (t.type == "Income" ? t.amount : -t.amount);
+            }
+            add(a.name, bal, "Selected account balance");
+        }
+    }
+    m_reportSummary->setText(QString("%1 · %2 · based on %3 transaction(s) for the active account.")
+                                 .arg(type, period).arg(activeTransactionCount));
 }
 
 void MainWindow::refreshDashboard()
 {
-    // Dashboard values are derived from current in-memory account, transaction and budget data.
-    // The page is rebuilt on demand so the figures never silently remain hard-coded.
-    if (!m_pages || m_pages->count() == 0) return;
-    QWidget *old = m_pages->widget(0);
-    QWidget *fresh = buildDashboardPage();
-    m_pages->removeWidget(old);
-    old->deleteLater();
-    m_pages->insertWidget(0, fresh);
-    if (m_pages->currentIndex() == 0) m_pages->setCurrentIndex(0);
+    // Refresh dashboard values without changing the user's current page.
+    if (!m_pages || m_pages->count() == 0)
+        return;
+
+    QWidget *oldDashboard = m_pages->widget(0);
+    QWidget *currentPage = m_pages->currentWidget();
+    const bool dashboardWasCurrent = (currentPage == oldDashboard);
+    QWidget *freshDashboard = buildDashboardPage();
+
+    // QStackedWidget may switch to the next page when its current widget is
+    // removed. Move temporarily to another page to avoid leaving the
+    // Dashboard navigation button selected while Transactions is displayed.
+    if (dashboardWasCurrent && m_pages->count() > 1)
+        m_pages->setCurrentIndex(1);
+
+    m_pages->removeWidget(oldDashboard);
+    oldDashboard->deleteLater();
+    m_pages->insertWidget(0, freshDashboard);
+
+    // Restore the exact page that was selected before the dashboard refresh.
+    if (dashboardWasCurrent)
+        m_pages->setCurrentWidget(freshDashboard);
+    else if (currentPage)
+        m_pages->setCurrentWidget(currentPage);
 }
 
 QWidget *MainWindow::buildUtilitiesPage()
@@ -2096,6 +2404,7 @@ void MainWindow::backupData()
     for (const auto& budget : budgets) {
         QJsonObject item;
         item["id"] = budget.getId();
+        item["accountId"] = budget.getAccountId();
         item["category"] = QString::fromStdString(budget.getCategory());
         item["month"] = budget.getMonth();
         item["year"] = budget.getYear();
@@ -2104,7 +2413,7 @@ void MainWindow::backupData()
     }
 
     QJsonObject backup;
-    backup["format"] = "PFBM-backup-v2";
+    backup["format"] = "PFBM-backup-v3";
     backup["accounts"] = accountArray;
     backup["transactions"] = transactionArray;
     backup["budgets"] = budgetArray;
@@ -2170,14 +2479,16 @@ void MainWindow::restoreData()
 
     const QJsonObject root = document.object();
 
-    if (root.value("format").toString() != "PFBM-backup-v2" ||
+    const QString backupFormat = root.value("format").toString();
+    const bool isV2Backup = backupFormat == "PFBM-backup-v2";
+    const bool isV3Backup = backupFormat == "PFBM-backup-v3";
+    if ((!isV2Backup && !isV3Backup) ||
         !root.value("accounts").isArray() ||
         !root.value("transactions").isArray() ||
         !root.value("budgets").isArray()) {
         QMessageBox::warning(
             this, "Restore failed",
-            "This is not a supported PFBM v2 backup. "
-            "Create a new backup using the current application.");
+            "This is not a supported PFBM v2 or v3 backup.");
         return;
     }
 
@@ -2318,22 +2629,40 @@ void MainWindow::restoreData()
                 throw std::runtime_error("A budget entry is not an object.");
 
             const QJsonObject item = value.toObject();
-            int id = 0, month = 0, year = 0;
+            int id = 0, accountId = 0, month = 0, year = 0;
             QString category;
             std::int64_t limit = 0;
 
-            if (!readInt(item, "id", id, 1,
-                         std::numeric_limits<int>::max()) ||
-                !readString(item, "category", category, false) ||
-                !readInt(item, "month", month, 1, 12) ||
-                !readInt(item, "year", year, 1, 9999) ||
-                !readPaise(item, "limitPaise", limit, true)) {
+            const bool commonFieldsValid =
+                readInt(item, "id", id, 1,
+                        std::numeric_limits<int>::max()) &&
+                readString(item, "category", category, false) &&
+                readInt(item, "month", month, 1, 12) &&
+                readInt(item, "year", year, 1, 9999) &&
+                readPaise(item, "limitPaise", limit, true);
+
+            bool accountFieldValid = true;
+            if (isV3Backup) {
+                accountFieldValid = readInt(
+                    item, "accountId", accountId, 0,
+                    std::numeric_limits<int>::max());
+            } else if (item.contains("accountId")) {
+                // Be tolerant of v2 backup files that may have been extended
+                // manually, while still validating the optional field.
+                accountFieldValid = readInt(
+                    item, "accountId", accountId, 0,
+                    std::numeric_limits<int>::max());
+            }
+
+            if (!commonFieldsValid || !accountFieldValid) {
                 throw std::runtime_error(
                     "A budget entry contains missing or invalid fields.");
             }
 
+            // Version 2 backups have no accountId, so those budgets are
+            // restored as unassigned and can be assigned using Edit Budget.
             budgets.emplace_back(
-                id, category.toStdString(), month, year, limit);
+                id, accountId, category.toStdString(), month, year, limit);
         }
     } catch (const std::exception& exception) {
         QMessageBox::warning(
@@ -2367,10 +2696,7 @@ void MainWindow::restoreData()
 
     // Refresh all views from the restored database.
     refreshAccountsTable();
-    refreshStatementAccountCombo();
-    refreshTransactionsTable();
-    refreshBudgetsTable();
-    refreshDashboard();
+    refreshAccountScopedViews();
 
     QMessageBox::information(
         this, "Restore complete",
@@ -2532,6 +2858,18 @@ void MainWindow::applyStyles()
             padding: 7px 10px;
             font-size: 8pt;
             font-weight: 700;
+        }
+        QComboBox#activeAccountCombo {
+            background: #ffffff;
+            color: #172033;
+            border: 1px solid #d8e2f0;
+            border-radius: 8px;
+            padding: 7px 10px;
+            min-height: 18px;
+            font-weight: 600;
+        }
+        QComboBox#activeAccountCombo:hover {
+            border-color: #365fce;
         }
         QFrame#welcomePanel {
             background: #e9efff;

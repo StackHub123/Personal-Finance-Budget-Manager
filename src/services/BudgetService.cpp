@@ -1,10 +1,29 @@
 #include "services/BudgetService.h"
 
+#include <algorithm>
+#include <cctype>
 #include <exception>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <utility>
+
+namespace
+{
+    bool equalsIgnoreCase(const std::string& left, const std::string& right)
+    {
+        if (left.size() != right.size())
+            return false;
+
+        for (std::size_t i = 0; i < left.size(); ++i) {
+            const auto leftChar = static_cast<unsigned char>(left[i]);
+            const auto rightChar = static_cast<unsigned char>(right[i]);
+            if (std::tolower(leftChar) != std::tolower(rightChar))
+                return false;
+        }
+        return true;
+    }
+}
 
 BudgetService::BudgetService(
     BudgetRepository& budgetRepository,
@@ -15,6 +34,7 @@ BudgetService::BudgetService(
 }
 
 bool BudgetService::addBudget(
+    int accountId,
     std::string category,
     int month,
     int year,
@@ -25,10 +45,16 @@ bool BudgetService::addBudget(
     error.clear();
     createdBudgetId = 0;
 
+    if (accountId <= 0) {
+        error = "A budget must be assigned to an account.";
+        return false;
+    }
+
     try
     {
         Budget budget(
             0,
+            accountId,
             std::move(category),
             month,
             year,
@@ -202,8 +228,10 @@ std::optional<BudgetStatus> BudgetService::calculateStatus(
     for (const auto& transaction : transactions)
     {
         // Only expenses in the budget's category count toward spending.
-        if (transaction.getType() != TransactionType::Expense ||
-            transaction.getCategory() != budget.getCategory())
+        if (transaction.getAccountId() != budget.getAccountId() ||
+            transaction.getType() != TransactionType::Expense ||
+            !equalsIgnoreCase(
+                transaction.getCategory(), budget.getCategory()))
         {
             continue;
         }

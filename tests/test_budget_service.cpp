@@ -45,6 +45,12 @@ int main()
         return 1;
     }
 
+    Account secondAccount(0, "Second Test Account", "Savings", 0);
+    if (!accountRepository.add(secondAccount, error)) {
+        std::cerr << "FAIL: Create second account: " << error << '\n';
+        return 1;
+    }
+
     // Add transactions directly through the repository to set up test data.
     auto addTransaction = [&](std::int64_t amount,
                               TransactionType type,
@@ -99,6 +105,15 @@ int main()
         return 1;
     }
 
+    // The same category/month in another account must not affect this account's budget.
+    Transaction secondAccountFood(
+        0, secondAccount.getId(), 30000, TransactionType::Expense,
+        "food", "Second account groceries", "2026-10-12");
+    if (!transactionRepository.add(secondAccountFood, error)) {
+        std::cerr << "FAIL: Add second-account transaction: " << error << '\n';
+        return 1;
+    }
+
     BudgetService service(budgetRepository, transactionRepository);
 
     // Test 1: Create a monthly budget.
@@ -106,7 +121,7 @@ int main()
     error.clear();
 
     if (!service.addBudget(
-            "Food", 10, 2026, 250000, foodBudgetId, error) ||
+            account.getId(), "Food", 10, 2026, 250000, foodBudgetId, error) ||
         foodBudgetId <= 0)
     {
         std::cerr << "FAIL: Create Food budget: "
@@ -134,12 +149,31 @@ int main()
     std::cout << "Test 2 passed: Spending and remaining amount "
                  "calculated correctly.\n";
 
-    // Test 3: Detect when spending exceeds the budget.
+    int secondFoodBudgetId = 0;
+    if (!service.addBudget(
+            secondAccount.getId(), "Food", 10, 2026, 100000,
+            secondFoodBudgetId, error) || secondFoodBudgetId <= 0) {
+        std::cerr << "FAIL: Same category budget for second account: "
+                  << error << '\n';
+        return 1;
+    }
+    auto secondFoodStatus = service.getBudgetStatus(secondFoodBudgetId, error);
+    if (!secondFoodStatus || !error.empty() ||
+        secondFoodStatus->spentPaise != 30000 ||
+        secondFoodStatus->remainingPaise != 70000 ||
+        secondFoodStatus->budget.getAccountId() != secondAccount.getId()) {
+        std::cerr << "FAIL: Second account budget included another account's spending. "
+                  << error << '\n';
+        return 1;
+    }
+    std::cout << "Test 3 passed: Same-category spending is isolated by account.\n";
+
+    // Test 4: Detect when spending exceeds the budget.
     int transportBudgetId = 0;
     error.clear();
 
     if (!service.addBudget(
-            "Transport", 10, 2026, 40000,
+            account.getId(), "Transport", 10, 2026, 40000,
             transportBudgetId, error))
     {
         std::cerr << "FAIL: Create Transport budget: "
@@ -162,24 +196,24 @@ int main()
         return 1;
     }
 
-    std::cout << "Test 3 passed: Over-budget situation detected.\n";
+    std::cout << "Test 4 passed: Over-budget situation detected.\n";
 
     // Test 4: Retrieve the statuses of all budgets.
     error.clear();
     auto statuses = service.getAllBudgetStatuses(error);
 
-    if (!error.empty() || statuses.size() != 2)
+    if (!error.empty() || statuses.size() != 3)
     {
         std::cerr << "FAIL: Retrieve all budget statuses: "
                   << error << '\n';
         return 1;
     }
 
-    std::cout << "Test 4 passed: All budget statuses retrieved.\n";
+    std::cout << "Test 5 passed: All budget statuses retrieved.\n";
 
     // Test 5: Update a budget and recalculate its status.
     Budget updatedFoodBudget(
-        foodBudgetId, "Food", 10, 2026, 200000
+        foodBudgetId, account.getId(), "Food", 10, 2026, 200000
     );
 
     error.clear();
@@ -205,7 +239,7 @@ int main()
         return 1;
     }
 
-    std::cout << "Test 5 passed: Updated budget status is correct.\n";
+    std::cout << "Test 6 passed: Updated budget status is correct.\n";
 
     // Test 6: Reject an invalid budget ID.
     error.clear();
@@ -216,7 +250,7 @@ int main()
         return 1;
     }
 
-    std::cout << "Test 6 passed: Invalid budget ID rejected.\n";
+    std::cout << "Test 7 passed: Invalid budget ID rejected.\n";
 
     // Test 7: Handle a budget ID that does not exist.
     error.clear();
@@ -227,7 +261,7 @@ int main()
         return 1;
     }
 
-    std::cout << "Test 7 passed: Nonexistent budget handled.\n";
+    std::cout << "Test 8 passed: Nonexistent budget handled.\n";
 
     // Test 8: Delete a budget.
     error.clear();
@@ -242,15 +276,26 @@ int main()
     error.clear();
     statuses = service.getAllBudgetStatuses(error);
 
-    if (!error.empty() || statuses.size() != 1 ||
-        statuses.front().budget.getId() != foodBudgetId)
+    if (!error.empty() || statuses.size() != 2)
     {
         std::cerr << "FAIL: Budget deletion was unsuccessful. "
                   << error << '\n';
         return 1;
     }
 
-    std::cout << "Test 8 passed: Budget deleted successfully.\n";
+    bool firstFoodBudgetRemains = false;
+    bool secondFoodBudgetRemains = false;
+    for (const auto &status : statuses) {
+        if (status.budget.getId() == foodBudgetId)
+            firstFoodBudgetRemains = true;
+        if (status.budget.getId() == secondFoodBudgetId)
+            secondFoodBudgetRemains = true;
+    }
+    if (!firstFoodBudgetRemains || !secondFoodBudgetRemains) {
+        std::cerr << "FAIL: Deleting one budget affected another account's budget.\n";
+        return 1;
+    }
+    std::cout << "Test 9 passed: Budget deletion is isolated to its ID.\n";
 
     database.close();
     std::remove(path.c_str());

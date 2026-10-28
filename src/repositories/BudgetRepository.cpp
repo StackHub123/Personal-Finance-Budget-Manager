@@ -16,35 +16,22 @@ namespace
         std::string& error)
     {
         sqlite3_stmt* rawStatement = nullptr;
-
         const int result = sqlite3_prepare_v2(
-            database,
-            sql,
-            -1,
-            &rawStatement,
-            nullptr
-        );
-
+            database, sql, -1, &rawStatement, nullptr);
         statement.reset(rawStatement);
 
-        if (result != SQLITE_OK)
-        {
+        if (result != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return false;
         }
-
         return true;
     }
 
     std::string columnText(sqlite3_stmt* statement, int column)
     {
         const auto* value = sqlite3_column_text(statement, column);
-
         if (value == nullptr)
-        {
             return {};
-        }
-
         return reinterpret_cast<const char*>(value);
     }
 
@@ -56,19 +43,11 @@ namespace
         std::string& error)
     {
         const int result = sqlite3_bind_text(
-            statement,
-            index,
-            value.c_str(),
-            -1,
-            SQLITE_TRANSIENT
-        );
-
-        if (result != SQLITE_OK)
-        {
+            statement, index, value.c_str(), -1, SQLITE_TRANSIENT);
+        if (result != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return false;
         }
-
         return true;
     }
 
@@ -78,40 +57,85 @@ namespace
         sqlite3* database,
         std::string& error)
     {
-        if (!bindText(
-                statement, 1, budget.getCategory(), database, error))
-        {
-            return false;
+        int result = SQLITE_OK;
+        if (budget.getAccountId() == 0) {
+            result = sqlite3_bind_null(statement, 1);
+        } else {
+            result = sqlite3_bind_int(statement, 1, budget.getAccountId());
         }
-
-        int result = sqlite3_bind_int(
-            statement, 2, budget.getMonth());
-
-        if (result != SQLITE_OK)
-        {
+        if (result != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return false;
         }
 
-        result = sqlite3_bind_int(
-            statement, 3, budget.getYear());
+        if (!bindText(statement, 2, budget.getCategory(), database, error))
+            return false;
 
-        if (result != SQLITE_OK)
-        {
+        result = sqlite3_bind_int(statement, 3, budget.getMonth());
+        if (result != SQLITE_OK) {
+            error = sqlite3_errmsg(database);
+            return false;
+        }
+
+        result = sqlite3_bind_int(statement, 4, budget.getYear());
+        if (result != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return false;
         }
 
         result = sqlite3_bind_int64(
-            statement, 4, budget.getLimitPaise());
-
-        if (result != SQLITE_OK)
-        {
+            statement, 5, budget.getLimitPaise());
+        if (result != SQLITE_OK) {
             error = sqlite3_errmsg(database);
             return false;
         }
-
         return true;
+    }
+
+    Budget readBudget(sqlite3_stmt* statement)
+    {
+        // SQL column order: id, account_id, category, month, year, limit.
+        return Budget(
+            sqlite3_column_int(statement, 0),
+            sqlite3_column_int(statement, 1),
+            columnText(statement, 2),
+            sqlite3_column_int(statement, 3),
+            sqlite3_column_int(statement, 4),
+            sqlite3_column_int64(statement, 5));
+    }
+
+    std::vector<Budget> readBudgets(
+        sqlite3* database,
+        const char* sql,
+        int accountId,
+        bool filterByAccount,
+        std::string& error)
+    {
+        std::vector<Budget> budgets;
+        Statement statement(nullptr, sqlite3_finalize);
+        if (!prepareStatement(database, sql, statement, error))
+            return budgets;
+
+        if (filterByAccount) {
+            const int result = sqlite3_bind_int(statement.get(), 1, accountId);
+            if (result != SQLITE_OK) {
+                error = sqlite3_errmsg(database);
+                return budgets;
+            }
+        }
+
+        int result = SQLITE_OK;
+        while ((result = sqlite3_step(statement.get())) == SQLITE_ROW)
+            budgets.push_back(readBudget(statement.get()));
+
+        if (result != SQLITE_DONE) {
+            error = sqlite3_errmsg(database);
+            budgets.clear();
+            return budgets;
+        }
+
+        error.clear();
+        return budgets;
     }
 }
 
@@ -122,56 +146,37 @@ BudgetRepository::BudgetRepository(DatabaseManager& database)
 
 bool BudgetRepository::add(Budget& budget, std::string& error)
 {
-    if (!m_database.isOpen())
-    {
+    if (!m_database.isOpen()) {
         error = "Cannot add budget: database is not open.";
         return false;
     }
-
-    if (budget.getId() != 0)
-    {
+    if (budget.getId() != 0) {
         error = "A new budget must have ID 0.";
         return false;
     }
 
     const char* sql =
-        "INSERT INTO budgets (category, month, year, limit_paise) "
-        "VALUES (?, ?, ?, ?);";
-
+        "INSERT INTO budgets "
+        "(account_id, category, month, year, limit_paise) "
+        "VALUES (?, ?, ?, ?, ?);";
     Statement statement(nullptr, sqlite3_finalize);
-
-    if (!prepareStatement(
-            m_database.handle(), sql, statement, error))
-    {
+    if (!prepareStatement(m_database.handle(), sql, statement, error))
         return false;
-    }
-
-    if (!bindBudgetFields(
-            statement.get(), budget, m_database.handle(), error))
-    {
+    if (!bindBudgetFields(statement.get(), budget, m_database.handle(), error))
         return false;
-    }
 
-    const int result = sqlite3_step(statement.get());
-
-    if (result != SQLITE_DONE)
-    {
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
 
-    const sqlite3_int64 newId =
-        sqlite3_last_insert_rowid(m_database.handle());
-
-    if (newId <= 0 ||
-        newId > std::numeric_limits<int>::max())
-    {
+    const sqlite3_int64 newId = sqlite3_last_insert_rowid(m_database.handle());
+    if (newId <= 0 || newId > std::numeric_limits<int>::max()) {
         error = "Generated budget ID is outside the supported range.";
         return false;
     }
 
     budget.setId(static_cast<int>(newId));
-
     error.clear();
     return true;
 }
@@ -180,162 +185,109 @@ std::optional<Budget> BudgetRepository::findById(
     int id,
     std::string& error) const
 {
-    if (!m_database.isOpen())
-    {
+    if (!m_database.isOpen()) {
         error = "Cannot find budget: database is not open.";
         return std::nullopt;
     }
-
-    if (id <= 0)
-    {
+    if (id <= 0) {
         error = "Budget ID must be positive.";
         return std::nullopt;
     }
 
     const char* sql =
-        "SELECT id, category, month, year, limit_paise "
+        "SELECT id, account_id, category, month, year, limit_paise "
         "FROM budgets WHERE id = ?;";
-
     Statement statement(nullptr, sqlite3_finalize);
-
-    if (!prepareStatement(
-            m_database.handle(), sql, statement, error))
-    {
+    if (!prepareStatement(m_database.handle(), sql, statement, error))
         return std::nullopt;
-    }
 
     const int bindResult = sqlite3_bind_int(statement.get(), 1, id);
-
-    if (bindResult != SQLITE_OK)
-    {
+    if (bindResult != SQLITE_OK) {
         error = sqlite3_errmsg(m_database.handle());
         return std::nullopt;
     }
 
     const int result = sqlite3_step(statement.get());
-
-    if (result == SQLITE_DONE)
-    {
+    if (result == SQLITE_DONE) {
         error = "Budget not found.";
         return std::nullopt;
     }
-
-    if (result != SQLITE_ROW)
-    {
+    if (result != SQLITE_ROW) {
         error = sqlite3_errmsg(m_database.handle());
         return std::nullopt;
     }
 
-    Budget budget(
-        sqlite3_column_int(statement.get(), 0),
-        columnText(statement.get(), 1),
-        sqlite3_column_int(statement.get(), 2),
-        sqlite3_column_int(statement.get(), 3),
-        sqlite3_column_int64(statement.get(), 4)
-    );
-
+    Budget budget = readBudget(statement.get());
     error.clear();
     return budget;
 }
 
-std::vector<Budget> BudgetRepository::getAll(
-    std::string& error) const
+std::vector<Budget> BudgetRepository::getAll(std::string& error) const
 {
-    std::vector<Budget> budgets;
-
-    if (!m_database.isOpen())
-    {
+    if (!m_database.isOpen()) {
         error = "Cannot retrieve budgets: database is not open.";
-        return budgets;
+        return {};
     }
 
-    const char* sql =
-        "SELECT id, category, month, year, limit_paise "
-        "FROM budgets ORDER BY year, month, category;";
-
-    Statement statement(nullptr, sqlite3_finalize);
-
-    if (!prepareStatement(
-            m_database.handle(), sql, statement, error))
-    {
-        return budgets;
-    }
-
-    int result;
-
-    while ((result = sqlite3_step(statement.get())) == SQLITE_ROW)
-    {
-        budgets.emplace_back(
-            sqlite3_column_int(statement.get(), 0),
-            columnText(statement.get(), 1),
-            sqlite3_column_int(statement.get(), 2),
-            sqlite3_column_int(statement.get(), 3),
-            sqlite3_column_int64(statement.get(), 4)
-        );
-    }
-
-    if (result != SQLITE_DONE)
-    {
-        error = sqlite3_errmsg(m_database.handle());
-        budgets.clear();
-        return budgets;
-    }
-
-    error.clear();
-    return budgets;
+    return readBudgets(
+        m_database.handle(),
+        "SELECT id, account_id, category, month, year, limit_paise "
+        "FROM budgets "
+        "ORDER BY account_id IS NULL, account_id, year, month, category COLLATE NOCASE;",
+        0, false, error);
 }
 
-bool BudgetRepository::update(
-    const Budget& budget,
-    std::string& error)
+std::vector<Budget> BudgetRepository::getByAccountId(
+    int accountId,
+    std::string& error) const
 {
-    if (!m_database.isOpen())
-    {
+    if (!m_database.isOpen()) {
+        error = "Cannot retrieve account budgets: database is not open.";
+        return {};
+    }
+    if (accountId <= 0) {
+        error = "Account ID must be positive.";
+        return {};
+    }
+
+    return readBudgets(
+        m_database.handle(),
+        "SELECT id, account_id, category, month, year, limit_paise "
+        "FROM budgets WHERE account_id = ? "
+        "ORDER BY year, month, category COLLATE NOCASE;",
+        accountId, true, error);
+}
+
+bool BudgetRepository::update(const Budget& budget, std::string& error)
+{
+    if (!m_database.isOpen()) {
         error = "Cannot update budget: database is not open.";
         return false;
     }
-
-    if (budget.getId() <= 0)
-    {
+    if (budget.getId() <= 0) {
         error = "Budget ID must be positive.";
         return false;
     }
 
     const char* sql =
-        "UPDATE budgets SET category = ?, month = ?, year = ?, "
-        "limit_paise = ? WHERE id = ?;";
-
+        "UPDATE budgets SET account_id = ?, category = ?, month = ?, "
+        "year = ?, limit_paise = ? WHERE id = ?;";
     Statement statement(nullptr, sqlite3_finalize);
-
-    if (!prepareStatement(
-            m_database.handle(), sql, statement, error))
-    {
+    if (!prepareStatement(m_database.handle(), sql, statement, error))
         return false;
-    }
-
-    if (!bindBudgetFields(
-            statement.get(), budget, m_database.handle(), error))
-    {
+    if (!bindBudgetFields(statement.get(), budget, m_database.handle(), error))
         return false;
-    }
 
-    const int bindResult = sqlite3_bind_int(
-        statement.get(), 5, budget.getId());
-
-    if (bindResult != SQLITE_OK)
-    {
+    const int bindResult = sqlite3_bind_int(statement.get(), 6, budget.getId());
+    if (bindResult != SQLITE_OK) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
-
-    if (sqlite3_step(statement.get()) != SQLITE_DONE)
-    {
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
-
-    if (sqlite3_changes(m_database.handle()) == 0)
-    {
+    if (sqlite3_changes(m_database.handle()) == 0) {
         error = "Budget not found or no changes were made.";
         return false;
     }
@@ -346,44 +298,32 @@ bool BudgetRepository::update(
 
 bool BudgetRepository::remove(int id, std::string& error)
 {
-    if (!m_database.isOpen())
-    {
+    if (!m_database.isOpen()) {
         error = "Cannot delete budget: database is not open.";
         return false;
     }
-
-    if (id <= 0)
-    {
+    if (id <= 0) {
         error = "Budget ID must be positive.";
         return false;
     }
 
-    const char* sql = "DELETE FROM budgets WHERE id = ?;";
-
     Statement statement(nullptr, sqlite3_finalize);
-
     if (!prepareStatement(
-            m_database.handle(), sql, statement, error))
-    {
+            m_database.handle(),
+            "DELETE FROM budgets WHERE id = ?;",
+            statement, error))
         return false;
-    }
 
     const int bindResult = sqlite3_bind_int(statement.get(), 1, id);
-
-    if (bindResult != SQLITE_OK)
-    {
+    if (bindResult != SQLITE_OK) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
-
-    if (sqlite3_step(statement.get()) != SQLITE_DONE)
-    {
+    if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
-
-    if (sqlite3_changes(m_database.handle()) == 0)
-    {
+    if (sqlite3_changes(m_database.handle()) == 0) {
         error = "Budget not found.";
         return false;
     }
@@ -391,7 +331,6 @@ bool BudgetRepository::remove(int id, std::string& error)
     error.clear();
     return true;
 }
-
 
 bool BudgetRepository::addRestored(
     const Budget& budget,
@@ -401,7 +340,6 @@ bool BudgetRepository::addRestored(
         error = "Cannot restore budget: database is not open.";
         return false;
     }
-
     if (budget.getId() <= 0) {
         error = "Restored budget ID must be positive.";
         return false;
@@ -409,29 +347,19 @@ bool BudgetRepository::addRestored(
 
     const char* sql =
         "INSERT INTO budgets "
-        "(category, month, year, limit_paise, id) "
-        "VALUES (?, ?, ?, ?, ?);";
-
+        "(account_id, category, month, year, limit_paise, id) "
+        "VALUES (?, ?, ?, ?, ?, ?);";
     Statement statement(nullptr, sqlite3_finalize);
-
-    if (!prepareStatement(
-            m_database.handle(), sql, statement, error)) {
+    if (!prepareStatement(m_database.handle(), sql, statement, error))
         return false;
-    }
-
-    if (!bindBudgetFields(
-            statement.get(), budget, m_database.handle(), error)) {
+    if (!bindBudgetFields(statement.get(), budget, m_database.handle(), error))
         return false;
-    }
 
-    const int result = sqlite3_bind_int(
-        statement.get(), 5, budget.getId());
-
-    if (result != SQLITE_OK) {
+    const int bindResult = sqlite3_bind_int(statement.get(), 6, budget.getId());
+    if (bindResult != SQLITE_OK) {
         error = sqlite3_errmsg(m_database.handle());
         return false;
     }
-
     if (sqlite3_step(statement.get()) != SQLITE_DONE) {
         error = sqlite3_errmsg(m_database.handle());
         return false;

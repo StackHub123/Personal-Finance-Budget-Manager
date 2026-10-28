@@ -29,6 +29,7 @@ public:
 
     // Create a budget and return its generated database ID.
     bool addBudget(
+        int accountId,
         std::string category,
         int month,
         int year,

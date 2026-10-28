@@ -27,6 +27,7 @@ int main()
     Budget budget(0, "  Food  ", 10, 2026, 250000);
 
     assert(budget.getId() == 0);
+    assert(budget.getAccountId() == 0); // Legacy/unassigned budget.
     assert(budget.getCategory() == "Food");
     assert(budget.getMonth() == 10);
     assert(budget.getYear() == 2026);
@@ -36,12 +37,14 @@ int main()
 
     // Test 2: Test setters.
     budget.setId(1);
+    budget.setAccountId(42);
     budget.setCategory(" Transport ");
     budget.setMonth(11);
     budget.setYear(2027);
     budget.setLimitPaise(500000);
 
     assert(budget.getId() == 1);
+    assert(budget.getAccountId() == 42);
     assert(budget.getCategory() == "Transport");
     assert(budget.getMonth() == 11);
     assert(budget.getYear() == 2027);
@@ -51,6 +54,7 @@ int main()
 
     // Test 3: Reject invalid constructor arguments.
     expectInvalidArgument([] { Budget(-1, "Food", 10, 2026, 10000); });
+    expectInvalidArgument([] { Budget(0, -1, "Food", 10, 2026, 10000); });
     expectInvalidArgument([] { Budget(0, "   ", 10, 2026, 10000); });
     expectInvalidArgument([] { Budget(0, "Food", 0, 2026, 10000); });
     expectInvalidArgument([] { Budget(0, "Food", 13, 2026, 10000); });
@@ -62,6 +66,7 @@ int main()
 
     // Test 4: Reject invalid setter arguments.
     expectInvalidArgument([&] { budget.setId(-1); });
+    expectInvalidArgument([&] { budget.setAccountId(-1); });
     expectInvalidArgument([&] { budget.setCategory("   "); });
     expectInvalidArgument([&] { budget.setMonth(0); });
     expectInvalidArgument([&] { budget.setMonth(13); });
@@ -70,6 +75,11 @@ int main()
     expectInvalidArgument([&] { budget.setLimitPaise(-1); });
 
     std::cout << "Test 4 passed: Invalid setter arguments rejected.\n";
+
+    Budget accountScopedBudget(0, 7, "Food", 10, 2026, 50000);
+    assert(accountScopedBudget.getAccountId() == 7);
+    assert(accountScopedBudget.getCategory() == "Food");
+    std::cout << "Test 5 passed: Account association is stored.\n";
 
     std::cout << "\nAll Budget tests passed!\n";
 

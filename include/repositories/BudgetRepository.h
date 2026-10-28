@@ -17,13 +17,13 @@ public:
     bool add(Budget& budget, std::string& error);
 
     // Retrieve one budget by ID.
-    std::optional<Budget> findById(
-        int id,
-        std::string& error
-    ) const;
+    std::optional<Budget> findById(int id, std::string& error) const;
 
-    // Retrieve all budgets.
+    // Retrieve all budgets (including legacy budgets not yet assigned).
     std::vector<Budget> getAll(std::string& error) const;
+
+    // Retrieve budgets owned by one account.
+    std::vector<Budget> getByAccountId(int accountId, std::string& error) const;
 
     // Update an existing budget.
     bool update(const Budget& budget, std::string& error);

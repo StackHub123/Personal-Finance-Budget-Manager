@@ -2,6 +2,46 @@
 
 #include <string>
 
+namespace
+{
+    bool tableHasColumn(
+        sqlite3* database,
+        const char* tableName,
+        const char* columnName,
+        bool& found,
+        std::string& error)
+    {
+        const std::string sql = std::string("PRAGMA table_info(") + tableName + ");";
+        sqlite3_stmt* statement = nullptr;
+
+        const int prepareResult = sqlite3_prepare_v2(
+            database, sql.c_str(), -1, &statement, nullptr);
+        if (prepareResult != SQLITE_OK) {
+            error = sqlite3_errmsg(database);
+            return false;
+        }
+
+        found = false;
+        int result = SQLITE_OK;
+        while ((result = sqlite3_step(statement)) == SQLITE_ROW) {
+            const auto* name = sqlite3_column_text(statement, 1);
+            if (name != nullptr &&
+                std::string(reinterpret_cast<const char*>(name)) == columnName) {
+                found = true;
+            }
+        }
+
+        if (result != SQLITE_DONE) {
+            error = sqlite3_errmsg(database);
+            sqlite3_finalize(statement);
+            return false;
+        }
+
+        sqlite3_finalize(statement);
+        return true;
+    }
+}
+
 DatabaseManager::DatabaseManager()
     : m_db(nullptr)
 {
@@ -160,16 +200,85 @@ bool DatabaseManager::initializeSchema(std::string& error)
 
         CREATE TABLE IF NOT EXISTS budgets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER,
             category TEXT NOT NULL CHECK(length(trim(category)) > 0),
             month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
             year INTEGER NOT NULL CHECK(year > 0),
             limit_paise INTEGER NOT NULL CHECK(limit_paise > 0),
-            UNIQUE(category COLLATE NOCASE, month, year)
+            FOREIGN KEY (account_id)
+                REFERENCES accounts(id)
+                ON UPDATE CASCADE
+                ON DELETE RESTRICT
         );
     )SQL";
 
     if (!execute(schema, error))
     {
+        std::string rollbackError;
+        execute("ROLLBACK;", rollbackError);
+        return false;
+    }
+
+    // Existing installations have a budgets table without account_id and
+    // with a global category/month/year uniqueness constraint. Rebuild that
+    // table transactionally, preserving every row and ID. Old budgets remain
+    // unassigned (account_id NULL) until the user chooses an account for them.
+    bool hasAccountId = false;
+    if (!tableHasColumn(m_db, "budgets", "account_id", hasAccountId, error)) {
+        std::string rollbackError;
+        execute("ROLLBACK;", rollbackError);
+        return false;
+    }
+
+    if (!hasAccountId) {
+        const std::string migration = R"SQL(
+            DROP TABLE IF EXISTS budgets_account_migration;
+
+            CREATE TABLE budgets_account_migration (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER,
+                category TEXT NOT NULL CHECK(length(trim(category)) > 0),
+                month INTEGER NOT NULL CHECK(month BETWEEN 1 AND 12),
+                year INTEGER NOT NULL CHECK(year > 0),
+                limit_paise INTEGER NOT NULL CHECK(limit_paise > 0),
+                FOREIGN KEY (account_id)
+                    REFERENCES accounts(id)
+                    ON UPDATE CASCADE
+                    ON DELETE RESTRICT
+            );
+
+            INSERT INTO budgets_account_migration
+                (id, account_id, category, month, year, limit_paise)
+            SELECT id, NULL, category, month, year, limit_paise
+            FROM budgets;
+
+            DROP TABLE budgets;
+            ALTER TABLE budgets_account_migration RENAME TO budgets;
+        )SQL";
+
+        if (!execute(migration, error)) {
+            std::string rollbackError;
+            execute("ROLLBACK;", rollbackError);
+            return false;
+        }
+    }
+
+    // Separate partial indexes preserve the old duplicate protection for
+    // unassigned legacy budgets while allowing identical budget periods for
+    // different accounts.
+    const std::string budgetIndexes = R"SQL(
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_budgets_account_category_period
+        ON budgets(account_id, category COLLATE NOCASE, month, year)
+        WHERE account_id IS NOT NULL;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_budgets_unassigned_category_period
+        ON budgets(category COLLATE NOCASE, month, year)
+        WHERE account_id IS NULL;
+    )SQL";
+
+    if (!execute(budgetIndexes, error)) {
         std::string rollbackError;
         execute("ROLLBACK;", rollbackError);
         return false;
