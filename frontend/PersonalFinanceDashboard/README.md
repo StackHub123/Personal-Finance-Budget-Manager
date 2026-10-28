@@ -1,46 +1,30 @@
-# Personal Finance & Budgeting Dashboard — Frontend milestone 0.1
+# Personal Finance & Budgeting Dashboard
 
-This folder contains the first small, self-contained Qt Widgets frontend milestone, following Phase 4.1 (Frontend layer) and the navigation/dashboard goals in Phase 13 of the project workflow.
-
-## Included
-
-- Main application window with a left navigation sidebar.
-- Dashboard landing page with summary cards for balance, income, expenses, and net savings.
-- Recent-activity and budget-snapshot panels using clearly labelled illustrative data.
-- Navigation to placeholder screens for Transactions, Accounts, Budgets, Reports, Statement Import, Backup & Restore, and Settings.
-- Shared stylesheet for a consistent desktop interface.
-- A clear frontend/backend boundary: this milestone has no database, repository, or business-service calls.
-
-## Important scope note
-
-The figures and transaction rows on the dashboard are demo placeholders only. They are not persisted and must not be treated as real financial calculations. Each non-dashboard screen is a navigation placeholder, not a completed feature.
+Qt Widgets desktop application for tracking accounts, transactions, budgets,
+reports, CSV statement imports, and JSON backups. Data is stored in SQLite in
+the operating system's application data directory.
 
 ## Requirements
 
-- Qt 6 with the Widgets component (Qt 6.2 or newer recommended)
-- CMake 3.21+
-- A C++17-capable compiler
+- Qt 6.2 or newer, including Widgets
+- CMake 3.21 or newer
+- A C++17 compiler
 
-## Build
+## Build and run
 
-From this `frontend` directory:
+From the repository root:
 
 ```bash
-cmake -S . -B build
+cmake -S frontend/PersonalFinanceDashboard -B build
 cmake --build build
+./build/PersonalFinanceFrontend
 ```
 
-Then run the executable produced in `build` (the exact path varies by operating system and generator).
+The last command launches the Qt Widgets desktop app from the repository root.
+You can also run `./PersonalFinanceFrontend` after changing into the `build`
+directory, or use Qt Creator to open
+`frontend/PersonalFinanceDashboard/CMakeLists.txt`, select a Qt 6 kit, and run
+the target.
 
-In Qt Creator, open `CMakeLists.txt`, select a Qt 6 kit, configure, build, and run.
-
-## Suggested commit
-
-```bash
-git add frontend
-git commit -m "Add initial Qt frontend shell and dashboard"
-```
-
-## Next step
-
-Keep this frontend as presentation/navigation only. When the Account, Transaction, Budget, service, and repository interfaces are finalized, connect button actions to those services instead of placing SQL or financial calculations inside `MainWindow`.
+The root `src/main.cpp` is a separate console stub; the Qt application is built
+from `frontend/PersonalFinanceDashboard`.

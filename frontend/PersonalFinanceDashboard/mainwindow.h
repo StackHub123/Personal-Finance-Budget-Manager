@@ -1,6 +1,15 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "database/DatabaseManager.h"
+#include "repositories/AccountRepository.h"
+#include "repositories/TransactionRepository.h"
+#include "repositories/BudgetRepository.h"
+#include "services/FinanceService.h"
+#include "services/TransactionService.h"
+#include "services/BudgetService.h"
+#include "services/BackupRestoreService.h"
+
 #include <QMainWindow>
 #include <QVector>
 #include <QString>
@@ -16,6 +25,9 @@ class QLineEdit;
 class QComboBox;
 class QDateEdit;
 class QProgressBar;
+class QVBoxLayout;
+class DonutChartWidget;
+class HorizontalBarChartWidget;
 
 class MainWindow final : public QMainWindow
 {
@@ -33,18 +45,22 @@ private:
     QWidget *buildBudgetsPage();
     QWidget *buildReportsPage();
     QWidget *buildUtilitiesPage();
+    QWidget *buildSettingsPage();
     QWidget *buildPlaceholderPage(const QString &title, const QString &description);
     QWidget *buildMetricCard(const QString &caption,
                              const QString &value,
                              const QString &detail);
     void navigateTo(int pageIndex);
     void refreshAccountsTable();
+    void refreshActiveAccountCombo();
+    void activeAccountChanged(int index);
+    void refreshAccountScopedViews();
     void createAccount();
     void viewAccounts();
     void editAccount();
     void deleteAccount();
     void showAccountMessage(const QString &message, bool success);
-    QStringList splitCsvLine(const QString &line) const;
+    QStringList splitCsvLine(const QString &line, QChar delimiter = ',') const;
     void chooseStatementFile();
     void confirmStatementImport();
     void refreshStatementAccountCombo();
@@ -59,14 +75,40 @@ private:
     void deleteBudget();
     void refreshDashboard();
     void runReport();
+    QString formatMoney(double amount) const;
+    QString formatDate(const QString &isoDate) const;
+    void applyDisplayPreferences();
     void backupData();
     void restoreData();
     void applyStyles();
+
+    DatabaseManager m_database;
+    AccountRepository m_accountRepository;
+    TransactionRepository m_transactionRepository;
+    BudgetRepository m_budgetRepository;
+    FinanceService m_financeService;
+    TransactionService m_transactionService;
+    BudgetService m_budgetService;
+    BackupRestoreService m_backupRestoreService;
+    bool m_databaseReady = false;
+    QString m_databaseError;
 
     QStackedWidget *m_pages = nullptr;
     QButtonGroup *m_navigationGroup = nullptr;
     QLabel *m_pageTitle = nullptr;
     QLabel *m_statusLabel = nullptr;
+    QComboBox *m_activeAccountCombo = nullptr;
+    int m_activeAccountId = 0;
+    QString m_themePreference = "light";
+    QString m_dateDisplayFormat = "yyyy-MM-dd";
+    QString m_numberFormat = "indian";
+    QString m_defaultReportPeriod = "This month";
+    QString m_importDuplicatePolicy = "flag";
+    QComboBox *m_settingsThemeCombo = nullptr;
+    QComboBox *m_settingsDateFormatCombo = nullptr;
+    QComboBox *m_settingsNumberFormatCombo = nullptr;
+    QComboBox *m_settingsReportPeriodCombo = nullptr;
+    QComboBox *m_settingsDuplicatePolicyCombo = nullptr;
     QTableWidget *m_accountsTable = nullptr;
     QFrame *m_emptyState = nullptr;
     QPushButton *m_editAccountButton = nullptr;
@@ -91,15 +133,9 @@ private:
         int lineNumber = 0;
         bool valid = false;
         bool duplicate = false;
-    };
-    struct ImportedTransactionRecord {
-        int accountId = -1;
-        QString date;
-        QString description;
-        double amount = 0.0;
+        QString duplicateReason;
     };
     QVector<StatementRecord> m_statementRows;
-    QVector<ImportedTransactionRecord> m_importedTransactions;
     int m_statementInvalidRowCount = 0;
     int m_statementAccountId = -1;
 
@@ -133,6 +169,8 @@ private:
 
     struct BudgetRecord {
         int id = 0;
+        int accountId = 0; // 0 means a legacy budget not yet assigned
+        QString accountName;
         QString category;
         double limit = 0.0;
         QString month; // YYYY-MM
@@ -147,6 +185,13 @@ private:
     QComboBox *m_reportPeriodCombo = nullptr;
     QTableWidget *m_reportTable = nullptr;
     QLabel *m_reportSummary = nullptr;
+    DonutChartWidget *m_reportDonutChart = nullptr;
+    HorizontalBarChartWidget *m_reportBarChart = nullptr;
+    QLabel *m_reportDonutTitle = nullptr;
+    QLabel *m_reportBarTitle = nullptr;
+    QFrame *m_reportBudgetPanel = nullptr;
+    QVBoxLayout *m_reportBudgetRowsLayout = nullptr;
+    bool m_reportWasGenerated = false;
 };
 
 #endif // MAINWINDOW_H
