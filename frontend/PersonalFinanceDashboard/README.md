@@ -17,12 +17,14 @@ From the repository root:
 ```bash
 cmake -S frontend/PersonalFinanceDashboard -B build
 cmake --build build
+./build/PersonalFinanceFrontend
 ```
 
-Run the resulting `PersonalFinanceFrontend` executable from the build
-directory (or use Qt Creator to open
+The last command launches the Qt Widgets desktop app from the repository root.
+You can also run `./PersonalFinanceFrontend` after changing into the `build`
+directory, or use Qt Creator to open
 `frontend/PersonalFinanceDashboard/CMakeLists.txt`, select a Qt 6 kit, and run
-the target).
+the target.
 
 The root `src/main.cpp` is a separate console stub; the Qt application is built
 from `frontend/PersonalFinanceDashboard`.

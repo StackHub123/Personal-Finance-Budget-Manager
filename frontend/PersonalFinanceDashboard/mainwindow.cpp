@@ -56,6 +56,10 @@
 #include <QJsonParseError>
 #include <QMap>
 #include <QColor>
+#include <QPainter>
+#include <QFontMetrics>
+#include <QScrollArea>
+#include <QLocale>
 
 namespace {
 const QStringList navigationItems = {
@@ -70,7 +74,289 @@ QLabel *makeLabel(const QString &text, const QString &objectName = {})
         label->setObjectName(objectName);
     return label;
 }
+
+QString normalizedHeader(const QString &header)
+{
+    QString normalized;
+    for (const QChar character : header) {
+        if (character.isLetterOrNumber())
+            normalized.append(character.toLower());
+    }
+    return normalized;
 }
+
+QString expandStatementTabs(const QString &line, int tabWidth = 8)
+{
+    QString expanded;
+    int column = 0;
+    for (const QChar character : line) {
+        if (character == '\t') {
+            const int spaces = tabWidth - (column % tabWidth);
+            expanded += QString(spaces, ' ');
+            column += spaces;
+        } else {
+            expanded += character;
+            ++column;
+        }
+    }
+    return expanded;
+}
+
+QString formatCurrency(double amount, bool indianGrouping, int decimals = 2)
+{
+    const QLocale locale = indianGrouping
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates);
+    return QString("₹ %1").arg(locale.toString(amount, 'f', decimals));
+}
+
+QDate parseStatementDate(const QString &value)
+{
+    const QString text = value.trimmed();
+    const QDate isoDate = QDate::fromString(text, Qt::ISODate);
+    if (isoDate.isValid())
+        return isoDate;
+    const QStringList formats = {
+        "d/M/yy", "dd/MM/yy", "d/M/yyyy", "dd/MM/yyyy",
+        "d-M-yy", "dd-MM-yy", "d-M-yyyy", "dd-MM-yyyy",
+        "yyyy/M/d", "yyyy/MM/dd", "d.M.yy", "dd.MM.yyyy",
+        "d-MMM-yyyy", "dd-MMM-yyyy", "d MMM yyyy", "dd MMM yyyy"
+    };
+    for (const QString &format : formats) {
+        const QDate date = QDate::fromString(text, format);
+        if (date.isValid())
+            return date;
+    }
+    return {};
+}
+
+bool parseStatementAmount(const QString &rawValue, double &amount)
+{
+    QString text = rawValue.trimmed();
+    if (text.isEmpty() || text == "-")
+        return false;
+
+    const bool parenthesizedNegative = text.startsWith('(') && text.endsWith(')');
+    if (parenthesizedNegative)
+        text = text.mid(1, text.size() - 2);
+    text.remove(QRegularExpression("[^0-9,.-]"));
+    if (text.isEmpty())
+        return false;
+
+    const int lastComma = text.lastIndexOf(',');
+    const int lastPeriod = text.lastIndexOf('.');
+    if (lastComma >= 0 && lastPeriod >= 0) {
+        if (lastComma > lastPeriod) {
+            text.remove('.');
+            text.replace(',', '.');
+        } else {
+            text.remove(',');
+        }
+    } else if (lastComma >= 0) {
+        const int digitsAfterComma = text.size() - lastComma - 1;
+        if (text.count(',') == 1 && digitsAfterComma > 0 && digitsAfterComma <= 2)
+            text.replace(',', '.');
+        else
+            text.remove(',');
+    }
+
+    bool ok = false;
+    double parsed = text.toDouble(&ok);
+    if (!ok || !qIsFinite(parsed))
+        return false;
+    amount = parenthesizedNegative ? -qAbs(parsed) : parsed;
+    return true;
+}
+
+bool statementTypeIsIncome(const QString &type, double signedAmount)
+{
+    const QString normalized = type.trimmed().toLower();
+    if (normalized == "income" || normalized == "credit" || normalized == "cr" ||
+        normalized == "deposit" || normalized == "salary" || normalized == "paid in")
+        return true;
+    if (normalized == "expense" || normalized == "debit" || normalized == "dr" ||
+        normalized == "withdrawal" || normalized == "payment" ||
+        normalized == "purchase" || normalized == "paid out")
+        return false;
+    return signedAmount > 0.0;
+}
+}
+
+class DonutChartWidget final : public QWidget
+{
+public:
+    explicit DonutChartWidget(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        setMinimumHeight(220);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setValues(const QVector<QPair<QString, double>> &values)
+    {
+        m_values = values;
+        update();
+    }
+
+    void setDarkMode(bool dark)
+    {
+        m_darkMode = dark;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF bounds = QRectF(rect()).adjusted(4, 8, -4, -8);
+        double total = 0.0;
+        for (const auto &entry : m_values)
+            total += qMax(0.0, entry.second);
+
+        if (total <= 0.0) {
+            painter.setPen(m_darkMode ? QColor("#a4b2c5") : QColor("#8994a7"));
+            painter.drawText(bounds, Qt::AlignCenter,
+                             "No expense data for this period");
+            return;
+        }
+
+        const qreal diameter = qMin(bounds.height() - 12.0,
+                                    qMax(110.0, bounds.width() * 0.42));
+        const QRectF pie(bounds.left(), bounds.center().y() - diameter / 2.0,
+                         diameter, diameter);
+        const QVector<QColor> colors = {
+            QColor("#3b82f6"), QColor("#14b8a6"), QColor("#f59e0b"),
+            QColor("#8b5cf6"), QColor("#f97316"), QColor("#ec4899"),
+            QColor("#64748b")
+        };
+        int startAngle = 90 * 16;
+        for (int i = 0; i < m_values.size(); ++i) {
+            const double value = qMax(0.0, m_values.at(i).second);
+            if (value <= 0.0)
+                continue;
+            const int span = qRound(value / total * 360.0 * 16.0);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(colors.at(i % colors.size()));
+            painter.drawPie(pie, startAngle, -span);
+            startAngle -= span;
+        }
+        painter.setBrush(m_darkMode ? QColor("#121e30") : QColor(Qt::white));
+        painter.drawEllipse(pie.adjusted(diameter * 0.27, diameter * 0.27,
+                                         -diameter * 0.27, -diameter * 0.27));
+
+        const qreal legendX = pie.right() + 18.0;
+        const qreal legendWidth = qMax(0.0, bounds.right() - legendX);
+        const qreal rowHeight = qMin(30.0, bounds.height() /
+                                     qMax(1, static_cast<int>(m_values.size())));
+        qreal y = bounds.center().y() - rowHeight * m_values.size() / 2.0;
+        const QFontMetrics metrics(painter.font());
+        for (int i = 0; i < m_values.size(); ++i) {
+            const auto &entry = m_values.at(i);
+            if (entry.second <= 0.0)
+                continue;
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(colors.at(i % colors.size()));
+            painter.drawRoundedRect(QRectF(legendX, y + 7, 10, 10), 3, 3);
+            painter.setPen(m_darkMode ? QColor("#dce6f4") : QColor("#344054"));
+            QString label = metrics.elidedText(entry.first, Qt::ElideRight,
+                                                qMax(0, static_cast<int>(legendWidth - 72)));
+            painter.drawText(QRectF(legendX + 17, y, qMax(0.0, legendWidth - 68), rowHeight),
+                             Qt::AlignVCenter | Qt::AlignLeft, label);
+            painter.setPen(m_darkMode ? QColor("#a4b2c5") : QColor("#667085"));
+            painter.drawText(QRectF(bounds.right() - 48, y, 48, rowHeight),
+                             Qt::AlignVCenter | Qt::AlignRight,
+                             QString::number(entry.second / total * 100.0, 'f', 0) + "%");
+            y += rowHeight;
+        }
+    }
+
+private:
+    QVector<QPair<QString, double>> m_values;
+    bool m_darkMode = false;
+};
+
+class HorizontalBarChartWidget final : public QWidget
+{
+public:
+    explicit HorizontalBarChartWidget(QWidget *parent = nullptr) : QWidget(parent)
+    {
+        setMinimumHeight(220);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setValues(const QVector<QPair<QString, double>> &values)
+    {
+        m_values = values;
+        setMinimumHeight(qMax(220, 52 * qMin(5, static_cast<int>(values.size())) + 24));
+        updateGeometry();
+        update();
+    }
+
+    void setIndianNumberFormat(bool indian)
+    {
+        m_indianNumberFormat = indian;
+        update();
+    }
+
+    void setDarkMode(bool dark)
+    {
+        m_darkMode = dark;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QRectF bounds = QRectF(rect()).adjusted(6, 8, -6, -8);
+        if (m_values.isEmpty()) {
+            painter.setPen(m_darkMode ? QColor("#a4b2c5") : QColor("#8994a7"));
+            painter.drawText(bounds, Qt::AlignCenter, "No report data for this period");
+            return;
+        }
+
+        double maxValue = 0.0;
+        for (const auto &entry : m_values)
+            maxValue = qMax(maxValue, entry.second);
+        if (maxValue <= 0.0)
+            maxValue = 1.0;
+
+        const int count = qMin(5, static_cast<int>(m_values.size()));
+        const qreal rowHeight = bounds.height() / count;
+        const qreal labelWidth = qMin(118.0, bounds.width() * 0.34);
+        const qreal valueWidth = 82.0;
+        const qreal barLeft = bounds.left() + labelWidth + 8;
+        const qreal barWidth = qMax(24.0, bounds.width() - labelWidth - valueWidth - 20);
+        const QFontMetrics metrics(painter.font());
+        for (int i = 0; i < count; ++i) {
+            const auto &entry = m_values.at(i);
+            const qreal y = bounds.top() + i * rowHeight;
+            painter.setPen(m_darkMode ? QColor("#c4d0e0") : QColor("#475467"));
+            painter.drawText(QRectF(bounds.left(), y, labelWidth, rowHeight),
+                             Qt::AlignVCenter | Qt::AlignLeft,
+                             metrics.elidedText(entry.first, Qt::ElideRight,
+                                                static_cast<int>(labelWidth)));
+            const QRectF track(barLeft, y + rowHeight * 0.34, barWidth, 12);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(m_darkMode ? QColor("#26364b") : QColor("#edf2f7"));
+            painter.drawRoundedRect(track, 6, 6);
+            QRectF amount = track;
+            amount.setWidth(track.width() * qBound(0.0, entry.second / maxValue, 1.0));
+            painter.setBrush(m_darkMode ? QColor("#4c88f0") : QColor("#3b82f6"));
+            painter.drawRoundedRect(amount, 6, 6);
+            painter.setPen(m_darkMode ? QColor("#dce6f4") : QColor("#344054"));
+            painter.drawText(QRectF(bounds.right() - valueWidth, y, valueWidth, rowHeight),
+                             Qt::AlignVCenter | Qt::AlignRight,
+                             formatCurrency(entry.second, m_indianNumberFormat, 0));
+        }
+    }
+
+private:
+    QVector<QPair<QString, double>> m_values;
+    bool m_indianNumberFormat = true;
+    bool m_darkMode = false;
+};
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -87,6 +373,24 @@ MainWindow::MainWindow(QWidget *parent)
     QCoreApplication::setApplicationName("PersonalFinanceDashboard");
     QSettings settings;
     m_activeAccountId = settings.value("dashboard/activeAccountId", 0).toInt();
+    m_themePreference = settings.value("settings/theme", "light").toString();
+    m_dateDisplayFormat = settings.value("settings/dateFormat", "yyyy-MM-dd").toString();
+    m_numberFormat = settings.value("settings/numberFormat", "indian").toString();
+    m_defaultReportPeriod = settings.value("settings/defaultReportPeriod", "This month").toString();
+    m_importDuplicatePolicy = settings.value("settings/importDuplicatePolicy", "flag").toString();
+    if (m_themePreference != "light" && m_themePreference != "dark")
+        m_themePreference = "light";
+    if (m_dateDisplayFormat != "dd/MM/yyyy" && m_dateDisplayFormat != "yyyy-MM-dd" &&
+        m_dateDisplayFormat != "d MMM yyyy")
+        m_dateDisplayFormat = "yyyy-MM-dd";
+    if (m_numberFormat != "indian" && m_numberFormat != "western")
+        m_numberFormat = "indian";
+    if (m_defaultReportPeriod != "This month" && m_defaultReportPeriod != "Last month" &&
+        m_defaultReportPeriod != "All time")
+        m_defaultReportPeriod = "This month";
+    if (m_importDuplicatePolicy != "flag" && m_importDuplicatePolicy != "skip" &&
+        m_importDuplicatePolicy != "import")
+        m_importDuplicatePolicy = "flag";
 
     const QString dataDirectory =
         QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -157,9 +461,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_pages->addWidget(buildReportsPage());
     m_pages->addWidget(buildImportStatementsPage());
     m_pages->addWidget(buildUtilitiesPage());
-    m_pages->addWidget(buildPlaceholderPage(
-        "Settings",
-        "Settings are not available yet. Your data is stored in the application data directory."));
+    m_pages->addWidget(buildSettingsPage());
 
     mainLayout->addWidget(m_pages, 1);
 
@@ -266,10 +568,10 @@ QWidget *MainWindow::buildDashboardPage()
     }
     const double currentBalance = accountBalance + income - expenses;
     auto *metrics = new QHBoxLayout; metrics->setSpacing(12);
-    metrics->addWidget(buildMetricCard("CURRENT BALANCE", QString("₹ %1").arg(currentBalance,0,'f',2), "Opening balances + transactions"));
-    metrics->addWidget(buildMetricCard("TOTAL INCOME", QString("₹ %1").arg(income,0,'f',2), "Recorded income"));
-    metrics->addWidget(buildMetricCard("TOTAL EXPENSES", QString("₹ %1").arg(expenses,0,'f',2), "Recorded expenses"));
-    metrics->addWidget(buildMetricCard("NET SAVINGS", QString("₹ %1").arg(income-expenses,0,'f',2), "Income minus expenses"));
+    metrics->addWidget(buildMetricCard("CURRENT BALANCE", formatMoney(currentBalance), "Opening balances + transactions"));
+    metrics->addWidget(buildMetricCard("TOTAL INCOME", formatMoney(income), "Recorded income"));
+    metrics->addWidget(buildMetricCard("TOTAL EXPENSES", formatMoney(expenses), "Recorded expenses"));
+    metrics->addWidget(buildMetricCard("NET SAVINGS", formatMoney(income-expenses), "Income minus expenses"));
     layout->addLayout(metrics);
 
     auto *lower = new QHBoxLayout; lower->setSpacing(14);
@@ -286,14 +588,16 @@ QWidget *MainWindow::buildDashboardPage()
             recent.append(transaction);
     }
     std::sort(recent.begin(),recent.end(),[](const TransactionRecord &a,const TransactionRecord &b){return a.date>b.date;});
-    for(int i=0;i<qMin(5,recent.size());++i){const auto &t=recent[i];int r=activity->rowCount();activity->insertRow(r);activity->setItem(r,0,new QTableWidgetItem(t.date));activity->setItem(r,1,new QTableWidgetItem(t.description));activity->setItem(r,2,new QTableWidgetItem(t.category));activity->setItem(r,3,new QTableWidgetItem(QString("%1 ₹ %2").arg(t.type=="Income"?"+":"−").arg(t.amount,0,'f',2)));}
+    for(int i=0;i<qMin(5,recent.size());++i){const auto &t=recent[i];int r=activity->rowCount();activity->insertRow(r);activity->setItem(r,0,new QTableWidgetItem(formatDate(t.date)));activity->setItem(r,1,new QTableWidgetItem(t.description));activity->setItem(r,2,new QTableWidgetItem(t.category));activity->setItem(r,3,new QTableWidgetItem(QString("%1 %2").arg(t.type=="Income"?"+":"−",formatMoney(t.amount))));}
     if(recent.isEmpty()) al->addWidget(makeLabel("No transactions yet. Add income or an expense to see your activity.","panelHint"));
+    activity->setVisible(!recent.isEmpty());
     al->addWidget(activity,1);
 
     auto *budgetPanel = new QFrame; budgetPanel->setObjectName("contentPanel");
     auto *bl = new QVBoxLayout(budgetPanel); bl->setContentsMargins(18,18,18,18);
     bl->addWidget(makeLabel("Budget usage", "panelTitle"));
     bool overBudget=false;
+    int visibleBudgetCount = 0;
     for (const auto &b : m_budgets) {
         if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId)
             continue;
@@ -307,13 +611,21 @@ QWidget *MainWindow::buildDashboardPage()
             }
         }
 
-        const QString budgetLabel = QString("%1 · %2 · ₹ %3 / ₹ %4")
-            .arg(b.accountName, b.category)
-            .arg(spent, 0, 'f', 2)
-            .arg(b.limit, 0, 'f', 2);
-        auto *label = makeLabel(budgetLabel, "budgetRowTitle");
+        ++visibleBudgetCount;
+        auto *label = makeLabel(QString("%1 · %2").arg(b.category, b.month),
+                                "budgetRowTitle");
         label->setWordWrap(true);
         bl->addWidget(label);
+
+        const double remaining = b.limit - spent;
+        const QString amountText = remaining >= 0.0
+            ? QString("%1 spent · %2 left · %3 limit")
+                  .arg(formatMoney(spent), formatMoney(remaining), formatMoney(b.limit))
+            : QString("%1 spent · Over by %2 · %3 limit")
+                  .arg(formatMoney(spent), formatMoney(-remaining), formatMoney(b.limit));
+        auto *amountLabel = makeLabel(amountText, "budgetRowValue");
+        amountLabel->setWordWrap(true);
+        bl->addWidget(amountLabel);
 
         auto *bar = new QProgressBar;
         bar->setRange(0, 100);
@@ -332,8 +644,10 @@ QWidget *MainWindow::buildDashboardPage()
             bl->addWidget(warning);
         }
     }
-    if(m_budgets.isEmpty())bl->addWidget(makeLabel("No budgets yet. Create a budget to track category spending.","panelHint"));
-    if(!overBudget&&!m_budgets.isEmpty())bl->addWidget(makeLabel("No budgets are over their limits.","panelHint"));
+    if (visibleBudgetCount == 0)
+        bl->addWidget(makeLabel("No budgets for this account yet. Create a budget to track category spending.", "panelHint"));
+    else if (!overBudget)
+        bl->addWidget(makeLabel("All budgets are within their limits.", "panelHint"));
     lower->addWidget(activityPanel,3);lower->addWidget(budgetPanel,2);layout->addLayout(lower,1);
     return page;
 }
@@ -493,7 +807,7 @@ void MainWindow::refreshAccountsTable()
             row, 2, new QTableWidgetItem(account.type));
 
         auto *balanceItem = new QTableWidgetItem(
-            QString("₹ %1").arg(account.balance, 0, 'f', 2));
+            formatMoney(account.balance));
         balanceItem->setTextAlignment(
             Qt::AlignRight | Qt::AlignVCenter);
         m_accountsTable->setItem(row, 3, balanceItem);
@@ -617,6 +931,9 @@ void MainWindow::createAccount()
         "fieldHint");
     typeHint->setWordWrap(true);
     auto *balanceSpin = new QDoubleSpinBox(&dialog);
+    balanceSpin->setLocale(m_numberFormat == "indian"
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates));
     balanceSpin->setRange(0.0, 1000000000000.0);
     balanceSpin->setDecimals(2);
     balanceSpin->setPrefix("₹ ");
@@ -746,6 +1063,9 @@ void MainWindow::editAccount()
     typeCombo->addItems({"Savings account", "Cash / Wallet", "Current account", "Credit card", "Other"});
     typeCombo->setCurrentText(original.type == "Savings" ? "Savings account" : original.type == "Cash" ? "Cash / Wallet" : original.type == "Current" ? "Current account" : original.type);
     auto *balanceSpin = new QDoubleSpinBox(&dialog);
+    balanceSpin->setLocale(m_numberFormat == "indian"
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates));
     balanceSpin->setRange(0.0, 1000000000000.0);
     balanceSpin->setDecimals(2);
     balanceSpin->setPrefix("₹ ");
@@ -921,9 +1241,9 @@ QWidget *MainWindow::buildImportStatementsPage()
     layout->addLayout(fileRow);
 
     auto *formatHint = makeLabel(
-        "Supported format: CSV with columns for Date, Description and Amount. "
-        "Example: 2026-10-20,Groceries,-450.00. Positive amounts are income; negative amounts are expenses. "
-        "A Type column is optional. PDF and Excel statements are not supported by this prototype.",
+        "CSV imports support common date, description, amount, debit and credit headings. "
+        "The importer detects comma, semicolon, tab and pipe delimiters, and skips statement title rows. "
+        "PDF and Excel files must be exported as CSV first.",
         "panelHint");
     formatHint->setWordWrap(true);
     layout->addWidget(formatHint);
@@ -932,7 +1252,7 @@ QWidget *MainWindow::buildImportStatementsPage()
     statsRow->setSpacing(12);
     m_statementDetectedLabel = makeLabel("Transactions detected: 0", "panelTitle");
     m_statementErrorLabel = makeLabel("Parsing errors: 0", "panelTitle");
-    m_statementDuplicateLabel = makeLabel("Duplicate rows: preserved", "panelTitle");
+    m_statementDuplicateLabel = makeLabel("Possible duplicates: 0", "panelTitle");
     for (QLabel *label : {m_statementDetectedLabel, m_statementErrorLabel, m_statementDuplicateLabel}) {
         auto *card = new QFrame;
         card->setObjectName("metricCard");
@@ -1066,12 +1386,12 @@ void MainWindow::clearStatementPreview(const QString &message)
     if (m_statementTable) m_statementTable->setRowCount(0);
     if (m_statementDetectedLabel) m_statementDetectedLabel->setText("Transactions detected: 0");
     if (m_statementErrorLabel) m_statementErrorLabel->setText("Parsing errors: 0");
-    if (m_statementDuplicateLabel) m_statementDuplicateLabel->setText("Duplicate rows: preserved");
+    if (m_statementDuplicateLabel) m_statementDuplicateLabel->setText("Possible duplicates: 0");
     if (m_statementErrorDetails) m_statementErrorDetails->setText("Choose a CSV statement to preview transactions and parsing issues.");
     if (m_confirmImportButton) m_confirmImportButton->setEnabled(false);
 }
 
-QStringList MainWindow::splitCsvLine(const QString &line) const
+QStringList MainWindow::splitCsvLine(const QString &line, QChar delimiter) const
 {
     QStringList fields;
     QString field;
@@ -1085,7 +1405,7 @@ QStringList MainWindow::splitCsvLine(const QString &line) const
             } else {
                 inQuotes = !inQuotes;
             }
-        } else if (ch == ',' && !inQuotes) {
+        } else if (ch == delimiter && !inQuotes) {
             fields << field.trimmed();
             field.clear();
         } else {
@@ -1100,8 +1420,7 @@ void MainWindow::chooseStatementFile()
 {
     if (m_accounts.isEmpty()) {
         QMessageBox::information(this, "Create an account first",
-            "No account exists in this running session. Go to Accounts and create the account these transactions belong to. "
-            "Accounts are currently temporary and are cleared when the application closes.");
+            "No account exists yet. Go to Accounts and create the account these transactions belong to.");
         return;
     }
     if (!m_statementAccountCombo || m_statementAccountCombo->currentIndex() <= 0) {
@@ -1140,78 +1459,246 @@ void MainWindow::chooseStatementFile()
     m_statementRows.clear();
     m_statementInvalidRowCount = 0;
     QStringList errors;
-    int lineNumber = 0;
-    bool headerFound = false;
-    int dateColumn = -1, descriptionColumn = -1, amountColumn = -1, typeColumn = -1;
-
+    refreshTransactionsTable();
     QTextStream stream(&file);
-    while (!stream.atEnd()) {
-        const QString rawLine = stream.readLine();
-        ++lineNumber;
-        if (rawLine.trimmed().isEmpty())
-            continue;
+    const QStringList lines = stream.readAll().split(QRegularExpression("\\r?\\n"));
+    bool headerFound = false;
+    int dateColumn = -1, descriptionColumn = -1, amountColumn = -1;
+    int debitColumn = -1, creditColumn = -1, typeColumn = -1;
+    QChar delimiter = ',';
+    bool fixedWidthMode = false;
+    QVector<int> fixedColumnStarts;
+    const QVector<QChar> delimiters = {',', ';', '\t', '|'};
+    const QSet<QString> dateHeaders = {
+        "date", "transactiondate", "txndate", "valuedate", "valuedt",
+        "bookingdate", "postdate", "postingdate", "dateposted"
+    };
+    const QSet<QString> descriptionHeaders = {
+        "description", "details", "narration", "merchant", "particulars",
+        "transactiondetails", "transactiondescription", "remarks", "payee",
+        "narrative", "memo", "merchantname"
+    };
+    const QSet<QString> amountHeaders = {
+        "amount", "transactionamount", "amt", "amountinr", "amountusd"
+    };
+    const QSet<QString> debitHeaders = {
+        "debit", "debitamount", "withdrawal", "withdrawalamount", "withdrawalamt",
+        "paidout", "dramount", "dramountinr", "moneyout", "withdrawalinr"
+    };
+    const QSet<QString> creditHeaders = {
+        "credit", "creditamount", "deposit", "depositamount", "depositamt",
+        "paidin", "cramount", "cramountinr", "moneyin", "depositinr"
+    };
+    const QSet<QString> typeHeaders = {
+        "type", "transactiontype", "drcr", "crdr", "debitcredit"
+    };
 
-        QStringList fields = splitCsvLine(rawLine);
-        if (!headerFound) {
-            for (int i = 0; i < fields.size(); ++i) {
-                const QString heading = fields.at(i).trimmed().toLower();
-                if (heading == "date" || heading == "transaction date") dateColumn = i;
-                else if (heading == "description" || heading == "details" || heading == "narration" || heading == "merchant") descriptionColumn = i;
-                else if (heading == "amount" || heading == "transaction amount") amountColumn = i;
-                else if (heading == "type" || heading == "transaction type") typeColumn = i;
+    int headerLineIndex = -1;
+    for (int lineIndex = 0; lineIndex < lines.size() && !headerFound; ++lineIndex) {
+        if (lines.at(lineIndex).trimmed().isEmpty())
+            continue;
+        const QString expandedHeader = expandStatementTabs(
+            lines.at(lineIndex).toUpper());
+        const QStringList fixedHeaderNames = {
+            "DATE", "NARRATION", "CHQ./REF.NO.", "VALUE DT",
+            "WITHDRAWAL AMT.", "DEPOSIT AMT.", "CLOSING BALANCE"
+        };
+        QVector<int> fixedStarts;
+        for (const QString &name : fixedHeaderNames)
+            fixedStarts.append(expandedHeader.indexOf(name));
+        if (lines.at(lineIndex).contains('\t') &&
+            fixedStarts.size() == fixedHeaderNames.size() &&
+            fixedStarts.at(0) >= 0 && fixedStarts.at(1) > fixedStarts.at(0) &&
+            fixedStarts.at(4) > fixedStarts.at(1) &&
+            fixedStarts.at(5) > fixedStarts.at(4) &&
+            fixedStarts.at(6) > fixedStarts.at(5)) {
+            fixedWidthMode = true;
+            fixedColumnStarts = fixedStarts;
+            dateColumn = 0;
+            descriptionColumn = 1;
+            debitColumn = 4;
+            creditColumn = 5;
+            headerLineIndex = lineIndex;
+            headerFound = true;
+            break;
+        }
+
+        for (const QChar candidateDelimiter : delimiters) {
+            const QStringList fields = splitCsvLine(lines.at(lineIndex), candidateDelimiter);
+            int candidateDate = -1, candidateDescription = -1, candidateAmount = -1;
+            int candidateDebit = -1, candidateCredit = -1, candidateType = -1;
+            for (int column = 0; column < fields.size(); ++column) {
+                QString heading = fields.at(column).trimmed();
+                if (column == 0 && !heading.isEmpty() && heading.at(0) == QChar(0xFEFF))
+                    heading.remove(0, 1);
+                const QString key = normalizedHeader(heading);
+                if (dateHeaders.contains(key) || key.startsWith("transactiondate")) candidateDate = column;
+                else if (descriptionHeaders.contains(key) || key.startsWith("transactiondescription")) candidateDescription = column;
+                else if (amountHeaders.contains(key) || key.startsWith("amount")) candidateAmount = column;
+                else if (typeHeaders.contains(key) || key.startsWith("transactiontype")) candidateType = column;
+                else if (debitHeaders.contains(key) || key.startsWith("debit") || key.startsWith("withdrawal")) candidateDebit = column;
+                else if (creditHeaders.contains(key) || key.startsWith("credit") || key.startsWith("deposit")) candidateCredit = column;
             }
-            if (dateColumn < 0 || descriptionColumn < 0 || amountColumn < 0) {
-                errors << QString("Line %1: header must include Date, Description and Amount columns.").arg(lineNumber);
+            const bool hasAmount = candidateAmount >= 0 ||
+                                   candidateDebit >= 0 || candidateCredit >= 0;
+            if (candidateDate >= 0 && candidateDescription >= 0 && hasAmount) {
+                dateColumn = candidateDate;
+                descriptionColumn = candidateDescription;
+                amountColumn = candidateAmount;
+                debitColumn = candidateDebit;
+                creditColumn = candidateCredit;
+                typeColumn = candidateType;
+                delimiter = candidateDelimiter;
+                headerLineIndex = lineIndex;
+                headerFound = true;
                 break;
             }
-            headerFound = true;
-            continue;
         }
+    }
 
-        const int requiredMax = qMax(dateColumn, qMax(descriptionColumn, amountColumn));
-        if (fields.size() <= requiredMax) {
-            ++m_statementInvalidRowCount;
-            errors << QString("Line %1: not enough columns; row skipped.").arg(lineNumber);
-            continue;
+    auto fieldAt = [](const QStringList &fields, int column) {
+        return column >= 0 && column < fields.size()
+            ? fields.at(column).trimmed() : QString();
+    };
+    auto isRecognizedHeader = [&](const QStringList &fields) {
+        bool hasDate = false, hasDescription = false, hasAmount = false;
+        for (const QString &field : fields) {
+            const QString key = normalizedHeader(field);
+            hasDate = hasDate || dateHeaders.contains(key) || key.startsWith("transactiondate");
+            hasDescription = hasDescription || descriptionHeaders.contains(key) ||
+                             key.startsWith("transactiondescription");
+            hasAmount = hasAmount || amountHeaders.contains(key) || key.startsWith("amount") ||
+                        debitHeaders.contains(key) || key.startsWith("debit") ||
+                        key.startsWith("withdrawal") || creditHeaders.contains(key) ||
+                        key.startsWith("credit") || key.startsWith("deposit");
         }
+        return hasDate && hasDescription && hasAmount;
+    };
+    auto rowMeansIncome = [](const StatementRecord &record) {
+        return statementTypeIsIncome(record.type, record.amount);
+    };
 
-        StatementRecord record;
-        record.date = fields.at(dateColumn).trimmed();
-        record.description = fields.at(descriptionColumn).trimmed();
-        QString amountText = fields.at(amountColumn).trimmed();
-        amountText.remove(QRegularExpression("[₹,$ ]"));
-        bool amountOk = false;
-        record.amount = amountText.toDouble(&amountOk);
-        record.type = (typeColumn >= 0 && typeColumn < fields.size())
-                          ? fields.at(typeColumn).trimmed() : QString();
+    if (headerFound) {
+        for (int lineIndex = headerLineIndex + 1; lineIndex < lines.size(); ++lineIndex) {
+            const int lineNumber = lineIndex + 1;
+            if (lines.at(lineIndex).trimmed().isEmpty())
+                continue;
+            QStringList fields;
+            if (fixedWidthMode) {
+                const QString expandedLine = expandStatementTabs(lines.at(lineIndex));
+                for (int column = 0; column < fixedColumnStarts.size(); ++column) {
+                    const int start = fixedColumnStarts.at(column);
+                    const int end = column + 1 < fixedColumnStarts.size()
+                        ? fixedColumnStarts.at(column + 1) : expandedLine.size();
+                    fields.append(start < expandedLine.size()
+                        ? expandedLine.mid(start, qMax(0, end - start)).trimmed()
+                        : QString());
+                }
+            } else {
+                fields = splitCsvLine(lines.at(lineIndex), delimiter);
+            }
+            if (isRecognizedHeader(fields))
+                continue; // Bank exports sometimes repeat column labels on each page.
 
-        const QDate parsedDate = QDate::fromString(record.date, Qt::ISODate);
-        if (!parsedDate.isValid()) {
-            ++m_statementInvalidRowCount;
-            errors << QString("Line %1: invalid date '%2'; row skipped (use YYYY-MM-DD).").arg(lineNumber).arg(record.date);
-            continue;
-        }
-        if (record.description.isEmpty()) {
-            ++m_statementInvalidRowCount;
-            errors << QString("Line %1: description is empty; row skipped.").arg(lineNumber);
-            continue;
-        }
-        if (!amountOk || !qIsFinite(record.amount)) {
-            ++m_statementInvalidRowCount;
-            errors << QString("Line %1: invalid amount '%2'; row skipped.").arg(lineNumber).arg(fields.at(amountColumn));
-            continue;
-        }
+            StatementRecord record;
+            const QString dateText = fieldAt(fields, dateColumn);
+            record.description = fieldAt(fields, descriptionColumn);
+            record.lineNumber = lineNumber;
+            QString dateWithoutSeparators = dateText;
+            dateWithoutSeparators.remove(QRegularExpression("[\\s-]"));
+            const QString summaryText = (dateText + " " + record.description).toLower();
+            if ((!dateText.trimmed().isEmpty() && dateWithoutSeparators.isEmpty()) ||
+                summaryText.contains("opening balance") ||
+                summaryText.contains("closing balance") ||
+                summaryText.contains("grand total"))
+                continue;
 
-        // Repeated transactions are legitimate; preserve every valid CSV row.
-        record.duplicate = false;
-        record.lineNumber = lineNumber;
-        record.valid = true;
-        m_statementRows.append(record);
+            bool amountOk = false;
+            if (debitColumn >= 0 || creditColumn >= 0) {
+                const QString debitText = fieldAt(fields, debitColumn);
+                const QString creditText = fieldAt(fields, creditColumn);
+                double debit = 0.0, credit = 0.0;
+                const bool hasDebit = !debitText.isEmpty() && debitText != "-";
+                const bool hasCredit = !creditText.isEmpty() && creditText != "-";
+                if (hasDebit && hasCredit) {
+                    ++m_statementInvalidRowCount;
+                    errors << QString("Line %1: both debit and credit have values; row skipped.")
+                                  .arg(lineNumber);
+                    continue;
+                }
+                if (!hasDebit && !hasCredit)
+                    continue; // Ignore statement totals and non-transaction rows.
+                if (hasDebit) {
+                    amountOk = parseStatementAmount(debitText, debit);
+                    record.amount = -qAbs(debit);
+                    record.type = "Debit";
+                } else {
+                    amountOk = parseStatementAmount(creditText, credit);
+                    record.amount = qAbs(credit);
+                    record.type = "Credit";
+                }
+            } else {
+                const QString amountText = fieldAt(fields, amountColumn);
+                if (amountText.isEmpty() || amountText == "-")
+                    continue;
+                amountOk = parseStatementAmount(amountText, record.amount);
+                record.type = fieldAt(fields, typeColumn);
+            }
+
+            const QDate parsedDate = parseStatementDate(dateText);
+            if (!parsedDate.isValid()) {
+                ++m_statementInvalidRowCount;
+                errors << QString("Line %1: unrecognized transaction date; row skipped.")
+                              .arg(lineNumber);
+                continue;
+            }
+            if (record.description.isEmpty()) {
+                ++m_statementInvalidRowCount;
+                errors << QString("Line %1: description is empty; row skipped.")
+                              .arg(lineNumber);
+                continue;
+            }
+            if (!amountOk || !qIsFinite(record.amount)) {
+                ++m_statementInvalidRowCount;
+                errors << QString("Line %1: unrecognized amount; row skipped.")
+                              .arg(lineNumber);
+                continue;
+            }
+
+            record.date = parsedDate.toString("yyyy-MM-dd");
+            record.valid = true;
+            const bool income = rowMeansIncome(record);
+            for (const auto &transaction : m_transactions) {
+                if (transaction.accountId == selectedAccountId &&
+                    transaction.date == record.date &&
+                    transaction.description.simplified().compare(
+                        record.description.simplified(), Qt::CaseInsensitive) == 0 &&
+                    qAbs(transaction.amount - qAbs(record.amount)) < 0.005 &&
+                    (transaction.type == "Income") == income) {
+                    record.duplicate = true;
+                    record.duplicateReason = "Matches an existing transaction";
+                    break;
+                }
+            }
+            if (!record.duplicate) {
+                for (const StatementRecord &previous : m_statementRows) {
+                    if (previous.date == record.date &&
+                        previous.description.simplified().compare(
+                            record.description.simplified(), Qt::CaseInsensitive) == 0 &&
+                        qAbs(qAbs(previous.amount) - qAbs(record.amount)) < 0.005 &&
+                        rowMeansIncome(previous) == income) {
+                        record.duplicate = true;
+                        record.duplicateReason = "Repeated transaction in this file";
+                        break;
+                    }
+                }
+            }
+            m_statementRows.append(record);
+        }
+    } else {
+        errors << "Could not find a transaction header. Expected date, description, and amount columns (or debit and credit columns).";
     }
     file.close();
-
-    if (!headerFound && errors.isEmpty())
-        errors << "The selected file is empty or has no header row.";
 
     if (m_statementPathLabel)
         m_statementPathLabel->setText(QFileInfo(filePath).fileName());
@@ -1220,7 +1707,10 @@ void MainWindow::chooseStatementFile()
     if (m_statementErrorLabel)
         m_statementErrorLabel->setText(QString("Parsing errors: %1").arg(errors.size()));
     if (m_statementDuplicateLabel)
-        m_statementDuplicateLabel->setText("Duplicate rows: preserved");
+        m_statementDuplicateLabel->setText(QString("Possible duplicates: %1")
+            .arg(static_cast<int>(std::count_if(
+                m_statementRows.cbegin(), m_statementRows.cend(),
+                [](const StatementRecord &record) { return record.duplicate; }))));
     if (m_statementErrorDetails)
         m_statementErrorDetails->setText(errors.isEmpty()
             ? "No parsing errors found."
@@ -1232,25 +1722,16 @@ void MainWindow::chooseStatementFile()
         for (const StatementRecord &record : m_statementRows) {
             const int row = m_statementTable->rowCount();
             m_statementTable->insertRow(row);
-            m_statementTable->setItem(row, 0, new QTableWidgetItem(record.date));
+            m_statementTable->setItem(row, 0, new QTableWidgetItem(formatDate(record.date)));
             m_statementTable->setItem(row, 1, new QTableWidgetItem(record.description));
-            auto *amountItem = new QTableWidgetItem(QString("₹ %1").arg(record.amount, 0, 'f', 2));
+            auto *amountItem = new QTableWidgetItem(formatMoney(record.amount));
             amountItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
             m_statementTable->setItem(row, 2, amountItem);
-            bool matchesPriorImport = false;
-            if (record.duplicate) {
-                for (const ImportedTransactionRecord &existing : m_importedTransactions) {
-                    if (existing.accountId == selectedAccountId && existing.date == record.date
-                        && existing.description.simplified().compare(record.description.simplified(), Qt::CaseInsensitive) == 0
-                        && qAbs(existing.amount - record.amount) < 0.005) {
-                        matchesPriorImport = true;
-                        break;
-                    }
-                }
-            }
-            m_statementTable->setItem(row, 3, new QTableWidgetItem(record.duplicate ? "Possible duplicate" : "Ready"));
+            const QString reviewStatus = !record.duplicate ? "Ready" :
+                (m_importDuplicatePolicy == "skip" ? "Will skip" : "Possible duplicate");
+            m_statementTable->setItem(row, 3, new QTableWidgetItem(reviewStatus));
             m_statementTable->setItem(row, 4, new QTableWidgetItem(record.duplicate
-                ? (matchesPriorImport ? "Matches a transaction already imported to this account" : "Repeated date, description and amount in this file")
+                ? record.duplicateReason
                 : QString("CSV line %1 · Account ID %2").arg(record.lineNumber).arg(selectedAccountId)));
         }
     }
@@ -1261,7 +1742,7 @@ void MainWindow::chooseStatementFile()
 
     if (!headerFound)
         QMessageBox::warning(this, "Statement format not recognised",
-                             "This file needs a CSV header with Date, Description and Amount columns.");
+                             "Could not find transaction columns. The file needs date and description columns, plus an amount column or debit/credit columns.");
 }
 
 void MainWindow::confirmStatementImport()
@@ -1315,17 +1796,35 @@ void MainWindow::confirmStatementImport()
     }
 
     const int validRows = m_statementRows.size();
+    const int possibleDuplicates = static_cast<int>(std::count_if(
+        m_statementRows.cbegin(), m_statementRows.cend(),
+        [](const StatementRecord &record) { return record.duplicate; }));
+    const int rowsToImport = m_importDuplicatePolicy == "skip"
+        ? validRows - possibleDuplicates : validRows;
+    if (rowsToImport <= 0) {
+        QMessageBox::information(
+            this, "No new transactions",
+            "Every valid row is a possible duplicate, and the current setting skips possible duplicates.");
+        return;
+    }
+    const QString duplicateExplanation = m_importDuplicatePolicy == "skip"
+        ? QString("Possible duplicate rows to skip: %1.").arg(possibleDuplicates)
+        : m_importDuplicatePolicy == "import"
+            ? QString("Possible duplicates to import: %1.").arg(possibleDuplicates)
+            : QString("Possible duplicates are flagged for review: %1. They will be included if you proceed.")
+                  .arg(possibleDuplicates);
 
     const auto answer = QMessageBox::question(
         this,
         "Confirm statement import",
         QString(
-            "Save all %1 valid transaction row(s) to account '%2'?\n\n"
-            "Repeated rows will be imported separately.\n"
-            "Rows rejected during CSV parsing: %3\n\n"
+            "Save %1 transaction row(s) to account '%2'?\n\n"
+            "%3\n"
+            "Rows rejected during CSV parsing: %4\n\n"
             "Transactions will be saved to SQLite.")
-            .arg(validRows)
+            .arg(rowsToImport)
             .arg(accountName)
+            .arg(duplicateExplanation)
             .arg(m_statementInvalidRowCount),
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
@@ -1335,33 +1834,18 @@ void MainWindow::confirmStatementImport()
 
     int imported = 0;
     int failed = 0;
+    int duplicatesSkipped = 0;
     QStringList saveErrors;
 
     for (const StatementRecord &record : m_statementRows) {
+        if (record.duplicate && m_importDuplicatePolicy == "skip") {
+            ++duplicatesSkipped;
+            continue;
+        }
         // A CSV may provide an explicit type. Recognise common income
         // and expense labels. When no recognised type is supplied,
         // use the amount's sign: positive = income, negative = expense.
-        const QString type = record.type.trimmed().toLower();
-
-        const bool explicitIncome =
-            type == "income"
-            || type == "credit"
-            || type == "cr"
-            || type == "deposit"
-            || type == "salary";
-
-        const bool explicitExpense =
-            type == "expense"
-            || type == "debit"
-            || type == "dr"
-            || type == "withdrawal"
-            || type == "payment"
-            || type == "purchase";
-
-        const bool isIncome =
-            explicitIncome ? true
-                           : explicitExpense ? false
-                                             : record.amount > 0.0;
+        const bool isIncome = statementTypeIsIncome(record.type, record.amount);
 
         // TransactionService expects a positive amount in paise;
         // the separate addIncome/addExpense method determines direction.
@@ -1429,11 +1913,13 @@ void MainWindow::confirmStatementImport()
         "Import finished for '%1'.\n\n"
         "Transactions saved to SQLite: %2\n"
         "Transactions that failed to save: %3\n"
-        "Malformed CSV rows skipped: %4\n\n"
+        "Possible duplicates skipped: %4\n"
+        "Malformed CSV rows skipped: %5\n\n"
         "Repeated transactions are preserved as separate entries.")
         .arg(accountName)
         .arg(imported)
         .arg(failed)
+        .arg(duplicatesSkipped)
         .arg(m_statementInvalidRowCount);
 
     if (!saveErrors.isEmpty()) {
@@ -1637,11 +2123,12 @@ void MainWindow::refreshTransactionsTable()
         for (const auto &a : m_accounts) if (a.id == t.accountId) accountName = a.name;
         const int row = m_transactionsTable->rowCount();
         m_transactionsTable->insertRow(row);
-        m_transactionsTable->setItem(row, 0, new QTableWidgetItem(t.date));
+        m_transactionsTable->setItem(row, 0, new QTableWidgetItem(formatDate(t.date)));
         m_transactionsTable->setItem(row, 1, new QTableWidgetItem(t.description));
         m_transactionsTable->setItem(row, 2, new QTableWidgetItem(t.category));
         m_transactionsTable->setItem(row, 3, new QTableWidgetItem(t.type));
-        auto *amount = new QTableWidgetItem(QString("%1 ₹ %2").arg(t.type == "Income" ? "+" : "−").arg(t.amount, 0, 'f', 2));
+        auto *amount = new QTableWidgetItem(
+            QString("%1 %2").arg(t.type == "Income" ? "+" : "−", formatMoney(t.amount)));
         amount->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_transactionsTable->setItem(row, 4, amount);
         m_transactionsTable->setItem(row, 5, new QTableWidgetItem(accountName));
@@ -1663,6 +2150,7 @@ void MainWindow::addTransaction(bool income)
     dialog.setMinimumWidth(420);
     auto *form = new QFormLayout(&dialog);
     auto *date = new QDateEdit(QDate::currentDate());
+    date->setDisplayFormat(m_dateDisplayFormat);
     date->setCalendarPopup(true);
     auto *description = new QLineEdit;
     description->setPlaceholderText(income ? "e.g. Monthly salary" : "e.g. Groceries");
@@ -1671,6 +2159,9 @@ void MainWindow::addTransaction(bool income)
     category->addItems(income ? QStringList{"Salary", "Allowance", "Interest", "Other"} :
                                  QStringList{"Food & groceries", "Transport", "Housing", "Entertainment", "Health", "Education", "Other"});
     auto *amount = new QDoubleSpinBox;
+    amount->setLocale(m_numberFormat == "indian"
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates));
     amount->setRange(0.01, 999999999.99);
     amount->setDecimals(2);
     amount->setPrefix("₹ ");
@@ -1762,10 +2253,12 @@ void MainWindow::editTransaction()
     auto &t = m_transactions[index];
     QDialog dialog(this); dialog.setWindowTitle("Edit transaction"); dialog.setMinimumWidth(420);
     auto *form = new QFormLayout(&dialog);
-    auto *date = new QDateEdit(QDate::fromString(t.date, Qt::ISODate)); date->setCalendarPopup(true);
+    auto *date = new QDateEdit(QDate::fromString(t.date, Qt::ISODate));
+    date->setDisplayFormat(m_dateDisplayFormat);
+    date->setCalendarPopup(true);
     auto *description = new QLineEdit(t.description);
     auto *category = new QLineEdit(t.category);
-    auto *amount = new QDoubleSpinBox; amount->setRange(0.01, 999999999.99); amount->setDecimals(2); amount->setPrefix("₹ "); amount->setValue(t.amount);
+    auto *amount = new QDoubleSpinBox; amount->setLocale(m_numberFormat == "indian" ? QLocale(QLocale::English, QLocale::India) : QLocale(QLocale::English, QLocale::UnitedStates)); amount->setRange(0.01, 999999999.99); amount->setDecimals(2); amount->setPrefix("₹ "); amount->setValue(t.amount);
     auto *account = new QComboBox;
     for (const auto &a : m_accounts) account->addItem(a.name, a.id);
     account->setCurrentIndex(qMax(0, account->findData(m_activeAccountId)));
@@ -1956,13 +2449,13 @@ void MainWindow::refreshBudgetsTable()
             row, 2, new QTableWidgetItem(record.category));
         m_budgetsTable->setItem(
             row, 3, new QTableWidgetItem(
-                QString("₹ %1").arg(record.limit, 0, 'f', 2)));
+                formatMoney(record.limit)));
         m_budgetsTable->setItem(
             row, 4, new QTableWidgetItem(
-                QString("₹ %1").arg(spent, 0, 'f', 2)));
+                formatMoney(spent)));
         m_budgetsTable->setItem(
             row, 5, new QTableWidgetItem(
-                QString("₹ %1").arg(remaining, 0, 'f', 2)));
+                formatMoney(remaining)));
 
         const QString budgetStatus = status.overBudget
             ? "OVER BUDGET"
@@ -2016,6 +2509,9 @@ void MainWindow::addBudget()
         "Health", "Education", "Utilities", "Other"});
 
     auto *limit = new QDoubleSpinBox;
+    limit->setLocale(m_numberFormat == "indian"
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates));
     limit->setRange(0.01, 999999999.99);
     limit->setDecimals(2);
     limit->setPrefix("₹ ");
@@ -2126,6 +2622,9 @@ void MainWindow::editBudget()
 
     auto *category = new QLineEdit(original.category);
     auto *limit = new QDoubleSpinBox;
+    limit->setLocale(m_numberFormat == "indian"
+        ? QLocale(QLocale::English, QLocale::India)
+        : QLocale(QLocale::English, QLocale::UnitedStates));
     limit->setRange(0.01, 999999999.99);
     limit->setDecimals(2);
     limit->setPrefix("₹ ");
@@ -2224,68 +2723,497 @@ void MainWindow::deleteBudget()
 }
 QWidget *MainWindow::buildReportsPage()
 {
-    auto *page=new QWidget; auto *layout=new QVBoxLayout(page); layout->setSpacing(12);
-    auto *panel=new QFrame; panel->setObjectName("contentPanel"); auto *f=new QFormLayout(panel);
-    m_reportTypeCombo=new QComboBox; m_reportTypeCombo->addItems({"Income and expenses","Category spending","Budget status","Account balances"});
-    m_reportPeriodCombo=new QComboBox; m_reportPeriodCombo->addItems({"This month","Last month","All time"});
-    auto *run=new QPushButton("Generate report"); run->setObjectName("primaryActionButton");
-    f->addRow("Report type",m_reportTypeCombo); f->addRow("Period",m_reportPeriodCombo); f->addRow(run);
-    layout->addWidget(panel);
-    m_reportSummary=makeLabel("Choose a report type and period, then generate a report.","panelHint"); layout->addWidget(m_reportSummary);
-    m_reportTable=new QTableWidget(0,3); m_reportTable->setObjectName("accountsTable"); m_reportTable->setHorizontalHeaderLabels({"Item","Amount","Details"}); m_reportTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch); m_reportTable->setEditTriggers(QAbstractItemView::NoEditTriggers); layout->addWidget(m_reportTable,1);
-    connect(run,&QPushButton::clicked,this,&MainWindow::runReport); return page;
+    auto *page = new QWidget;
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 4, 0, 0);
+    layout->setSpacing(14);
+
+    auto *controls = new QFrame;
+    controls->setObjectName("contentPanel");
+    auto *controlsLayout = new QHBoxLayout(controls);
+    controlsLayout->setContentsMargins(18, 14, 18, 14);
+    controlsLayout->setSpacing(12);
+    m_reportTypeCombo = new QComboBox;
+    m_reportTypeCombo->addItems({"Income and expenses", "Category spending",
+                                 "Budget status", "Account balances"});
+    m_reportPeriodCombo = new QComboBox;
+    m_reportPeriodCombo->addItems({"This month", "Last month", "All time"});
+    if (m_reportPeriodCombo->findText(m_defaultReportPeriod) >= 0)
+        m_reportPeriodCombo->setCurrentText(m_defaultReportPeriod);
+    auto *run = new QPushButton("Generate report");
+    run->setObjectName("primaryActionButton");
+    controlsLayout->addWidget(makeLabel("REPORT", "metricCaption"));
+    controlsLayout->addWidget(m_reportTypeCombo, 1);
+    controlsLayout->addWidget(makeLabel("PERIOD", "metricCaption"));
+    controlsLayout->addWidget(m_reportPeriodCombo, 1);
+    controlsLayout->addWidget(run);
+    layout->addWidget(controls);
+
+    m_reportSummary = makeLabel(
+        "Choose a report and period to explore your account activity.", "panelHint");
+    layout->addWidget(m_reportSummary);
+
+    auto *chartRow = new QHBoxLayout;
+    chartRow->setSpacing(14);
+    auto *donutPanel = new QFrame;
+    donutPanel->setObjectName("contentPanel");
+    auto *donutLayout = new QVBoxLayout(donutPanel);
+    donutLayout->setContentsMargins(16, 14, 16, 12);
+    m_reportDonutTitle = makeLabel("Expense breakdown", "panelTitle");
+    donutLayout->addWidget(m_reportDonutTitle);
+    m_reportDonutChart = new DonutChartWidget;
+    m_reportDonutChart->setDarkMode(m_themePreference == "dark");
+    donutLayout->addWidget(m_reportDonutChart, 1);
+    auto *barPanel = new QFrame;
+    barPanel->setObjectName("contentPanel");
+    auto *barLayout = new QVBoxLayout(barPanel);
+    barLayout->setContentsMargins(16, 14, 16, 12);
+    m_reportBarTitle = makeLabel("Income vs expenses", "panelTitle");
+    barLayout->addWidget(m_reportBarTitle);
+    m_reportBarChart = new HorizontalBarChartWidget;
+    m_reportBarChart->setDarkMode(m_themePreference == "dark");
+    m_reportBarChart->setIndianNumberFormat(m_numberFormat == "indian");
+    barLayout->addWidget(m_reportBarChart, 1);
+    chartRow->addWidget(donutPanel, 1);
+    chartRow->addWidget(barPanel, 1);
+    layout->addLayout(chartRow);
+
+    m_reportBudgetPanel = new QFrame;
+    m_reportBudgetPanel->setObjectName("contentPanel");
+    auto *budgetLayout = new QVBoxLayout(m_reportBudgetPanel);
+    budgetLayout->setContentsMargins(16, 14, 16, 14);
+    budgetLayout->addWidget(makeLabel("Budget remaining", "panelTitle"));
+    auto *budgetScroll = new QScrollArea;
+    budgetScroll->setWidgetResizable(true);
+    budgetScroll->setFrameShape(QFrame::NoFrame);
+    budgetScroll->setMaximumHeight(190);
+    auto *budgetRows = new QWidget;
+    m_reportBudgetRowsLayout = new QVBoxLayout(budgetRows);
+    m_reportBudgetRowsLayout->setContentsMargins(0, 0, 0, 0);
+    m_reportBudgetRowsLayout->setSpacing(10);
+    budgetScroll->setWidget(budgetRows);
+    budgetLayout->addWidget(budgetScroll);
+    m_reportBudgetPanel->hide();
+    layout->addWidget(m_reportBudgetPanel);
+
+    m_reportTable = new QTableWidget(0, 3);
+    m_reportTable->setObjectName("accountsTable");
+    m_reportTable->setHorizontalHeaderLabels({"Item", "Amount", "Details"});
+    m_reportTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_reportTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_reportTable->setAlternatingRowColors(true);
+    m_reportTable->verticalHeader()->setVisible(false);
+    layout->addWidget(m_reportTable, 1);
+
+    connect(run, &QPushButton::clicked, this, &MainWindow::runReport);
+    connect(m_reportPeriodCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        if (index < 0 || !m_reportPeriodCombo)
+            return;
+        m_defaultReportPeriod = m_reportPeriodCombo->currentText();
+        QSettings().setValue("settings/defaultReportPeriod", m_defaultReportPeriod);
+        if (m_settingsReportPeriodCombo)
+            m_settingsReportPeriodCombo->setCurrentText(m_defaultReportPeriod);
+        if (m_reportWasGenerated)
+            runReport();
+    });
+    return page;
 }
 
 void MainWindow::runReport()
 {
-    if(!m_reportTable)return; m_reportTable->setRowCount(0);
+    if (!m_reportTable || !m_reportTypeCombo || !m_reportPeriodCombo)
+        return;
+    m_reportTable->setRowCount(0);
     m_reportWasGenerated = true;
-    const QString type=m_reportTypeCombo->currentText(), period=m_reportPeriodCombo->currentText();
-    const QString thisMonth=QDate::currentDate().toString("yyyy-MM"), lastMonth=QDate::currentDate().addMonths(-1).toString("yyyy-MM");
-    auto inPeriod=[&](const QString &date){return period=="All time" || (period=="This month" && date.left(7)==thisMonth) || (period=="Last month" && date.left(7)==lastMonth);};
-    auto add=[&](const QString &name,double amount,const QString &detail){int r=m_reportTable->rowCount();m_reportTable->insertRow(r);m_reportTable->setItem(r,0,new QTableWidgetItem(name));m_reportTable->setItem(r,1,new QTableWidgetItem(QString("₹ %1").arg(amount,0,'f',2)));m_reportTable->setItem(r,2,new QTableWidgetItem(detail));};
-    double income=0,expense=0; QMap<QString,double> categories;
-    int activeTransactionCount = 0;
-    for(const auto &t:m_transactions) {
-        if (t.accountId != m_activeAccountId || !inPeriod(t.date)) continue;
-        ++activeTransactionCount;
-        if(t.type=="Income")income+=t.amount;else{expense+=t.amount;categories[t.category]+=t.amount;}
+    const QString type = m_reportTypeCombo->currentText();
+    const QString period = m_reportPeriodCombo->currentText();
+    const QDate today = QDate::currentDate();
+    const QString thisMonth = today.toString("yyyy-MM");
+    const QString lastMonth = today.addMonths(-1).toString("yyyy-MM");
+    if (m_reportDonutTitle) {
+        m_reportDonutTitle->setText(type == "Budget status"
+            ? "Budget used vs available" :
+            type == "Category spending" ? "Expense by category" :
+                                           "Expense breakdown");
     }
-    if(type=="Income and expenses"){add("Income",income,period);add("Expenses",expense,period);add("Net savings",income-expense,"Income minus expenses");}
-    else if(type=="Category spending"){for(auto it=categories.cbegin();it!=categories.cend();++it)add(it.key(),it.value(),"Expense category");}
-    else if(type=="Budget status"){
+    if (m_reportBarTitle) {
+        m_reportBarTitle->setText(type == "Budget status"
+            ? "Spending by budget" :
+            type == "Category spending" ? "Top expense categories" :
+            type == "Account balances" ? "Account balance" :
+                                          "Income vs expenses");
+    }
+    const QDate lastMonthEnd = QDate::fromString(lastMonth + "-01", "yyyy-MM-dd")
+                                   .addMonths(1).addDays(-1);
+    auto inPeriod = [&](const QString &date) {
+        return period == "All time" ||
+               (period == "This month" && date.left(7) == thisMonth) ||
+               (period == "Last month" && date.left(7) == lastMonth);
+    };
+    auto add = [&](const QString &name, double amount, const QString &detail) {
+        const int row = m_reportTable->rowCount();
+        m_reportTable->insertRow(row);
+        m_reportTable->setItem(row, 0, new QTableWidgetItem(name));
+        m_reportTable->setItem(row, 1, new QTableWidgetItem(formatMoney(amount)));
+        m_reportTable->setItem(row, 2, new QTableWidgetItem(detail));
+    };
+    double income = 0.0, expense = 0.0;
+    QMap<QString, double> categories;
+    int activeTransactionCount = 0;
+    for (const auto &t : m_transactions) {
+        if (t.accountId != m_activeAccountId || !inPeriod(t.date))
+            continue;
+        ++activeTransactionCount;
+        if (t.type == "Income")
+            income += t.amount;
+        else {
+            expense += t.amount;
+            categories[t.category] += t.amount;
+        }
+    }
+
+    QVector<QPair<QString, double>> categoryValues;
+    for (auto it = categories.cbegin(); it != categories.cend(); ++it)
+        categoryValues.append(qMakePair(it.key(), it.value()));
+    std::sort(categoryValues.begin(), categoryValues.end(),
+              [](const auto &a, const auto &b) { return a.second > b.second; });
+    QVector<QPair<QString, double>> donutValues;
+    double otherCategoryTotal = 0.0;
+    for (int i = 0; i < categoryValues.size(); ++i) {
+        if (i < 5)
+            donutValues.append(categoryValues.at(i));
+        else
+            otherCategoryTotal += categoryValues.at(i).second;
+    }
+    if (otherCategoryTotal > 0.0)
+        donutValues.append(qMakePair(QString("Other"), otherCategoryTotal));
+
+    QVector<QPair<QString, double>> barValues;
+    if (type == "Category spending") {
+        barValues = categoryValues;
+        for (const auto &entry : categoryValues)
+            add(entry.first, entry.second, "Expense category");
+    } else if (type == "Budget status") {
+        double totalSpent = 0.0;
+        double totalRemaining = 0.0;
         for (const auto &b : m_budgets) {
             if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId)
                 continue;
-            if (period != "All time" && b.month != (period == "This month" ? thisMonth : lastMonth))
+            if (period != "All time" &&
+                b.month != (period == "This month" ? thisMonth : lastMonth))
                 continue;
-            double spent = 0;
+
+            double spent = 0.0;
             for (const auto &t : m_transactions) {
                 if (t.accountId == b.accountId && t.type == "Expense" &&
                     t.category.compare(b.category, Qt::CaseInsensitive) == 0 &&
-                    t.date.left(7) == b.month) {
+                    t.date.left(7) == b.month)
                     spent += t.amount;
-                }
             }
+            const double remaining = b.limit - spent;
+            const QString label = QString("%1 · %2 · %3")
+                .arg(b.category, b.accountName, b.month);
+            const QString status = spent > b.limit ? "Over budget" :
+                (spent >= b.limit * 0.8 ? "Near limit" : "On track");
             add(QString("%1 — %2").arg(b.accountName, b.category), spent,
-                QString("Limit ₹ %1 · %2")
-                    .arg(b.limit, 0, 'f', 2)
-                    .arg(spent > b.limit ? "OVER BUDGET" : "On track"));
+                QString("%1 · Limit %2 · Remaining %3")
+                    .arg(status, formatMoney(b.limit), formatMoney(remaining)));
+            barValues.append(qMakePair(label, spent));
+            totalSpent += spent;
+            totalRemaining += qMax(0.0, remaining);
+
         }
-    }
-    else {
-        for (const auto &a : m_accounts) {
-            if (a.id != m_activeAccountId) continue;
-            double bal = a.balance;
-            for (const auto &t : m_transactions) {
-                if (t.accountId == a.id)
-                    bal += (t.type == "Income" ? t.amount : -t.amount);
+        if (m_reportDonutChart) {
+            QVector<QPair<QString, double>> budgetSplit;
+            if (totalSpent > 0.0)
+                budgetSplit.append(qMakePair(QString("Spent"), totalSpent));
+            if (totalRemaining > 0.0)
+                budgetSplit.append(qMakePair(QString("Still available"), totalRemaining));
+            m_reportDonutChart->setValues(budgetSplit);
+        }
+    } else {
+        if (type == "Income and expenses") {
+            add("Income", income, period);
+            add("Expenses", expense, period);
+            add("Net savings", income - expense, "Income minus expenses");
+        } else {
+            const QDate cutoff = period == "Last month"
+                ? lastMonthEnd : today;
+            for (const auto &a : m_accounts) {
+                if (a.id != m_activeAccountId)
+                    continue;
+                double balance = a.balance;
+                for (const auto &t : m_transactions) {
+                    if (t.accountId == a.id &&
+                        QDate::fromString(t.date, "yyyy-MM-dd") <= cutoff)
+                        balance += (t.type == "Income" ? t.amount : -t.amount);
+                }
+                add(a.name, balance,
+                    period == "All time" ? "Current balance" :
+                    QString("Balance at %1").arg(formatDate(cutoff.toString(Qt::ISODate))));
+                barValues.append(qMakePair(a.name, balance));
             }
-            add(a.name, bal, "Selected account balance");
         }
     }
-    m_reportSummary->setText(QString("%1 · %2 · based on %3 transaction(s) for the active account.")
-                                 .arg(type, period).arg(activeTransactionCount));
+
+    if (type != "Budget status" && m_reportDonutChart)
+        m_reportDonutChart->setValues(donutValues);
+    if (type == "Income and expenses") {
+        barValues = {{"Income", income}, {"Expenses", expense}};
+    }
+    std::sort(barValues.begin(), barValues.end(),
+              [](const auto &a, const auto &b) { return a.second > b.second; });
+    if (m_reportBarChart) {
+        m_reportBarChart->setIndianNumberFormat(m_numberFormat == "indian");
+        m_reportBarChart->setValues(barValues);
+    }
+
+    if (m_reportBudgetRowsLayout) {
+        while (QLayoutItem *item = m_reportBudgetRowsLayout->takeAt(0)) {
+            if (QWidget *widget = item->widget())
+                widget->deleteLater();
+            delete item;
+        }
+    }
+    // Rebuild the budget rows after clearing rows from the previous report.
+    if (type == "Budget status") {
+        for (const auto &b : m_budgets) {
+            if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId ||
+                (period != "All time" &&
+                 b.month != (period == "This month" ? thisMonth : lastMonth)))
+                continue;
+            double spent = 0.0;
+            for (const auto &t : m_transactions) {
+                if (t.accountId == b.accountId && t.type == "Expense" &&
+                    t.category.compare(b.category, Qt::CaseInsensitive) == 0 &&
+                    t.date.left(7) == b.month)
+                    spent += t.amount;
+            }
+            auto *row = new QWidget(m_reportBudgetPanel);
+            auto *rowLayout = new QVBoxLayout(row);
+            rowLayout->setContentsMargins(0, 0, 0, 0);
+            rowLayout->setSpacing(4);
+            auto *labels = new QHBoxLayout;
+            const double remaining = b.limit - spent;
+            const QString remainingText = remaining >= 0.0
+                ? QString("%1 spent  ·  %2 left")
+                      .arg(formatMoney(spent), formatMoney(remaining))
+                : QString("%1 spent  ·  Over by %2")
+                      .arg(formatMoney(spent), formatMoney(-remaining));
+            labels->addWidget(makeLabel(QString("%1 · %2").arg(b.category, b.month),
+                                        "budgetRowTitle"), 1);
+            labels->addWidget(makeLabel(remainingText, "budgetRowValue"),
+                              0, Qt::AlignRight);
+            auto *progress = new QProgressBar;
+            progress->setRange(0, 100);
+            progress->setValue(b.limit > 0.0
+                ? qBound(0, qRound(spent / b.limit * 100.0), 100) : 0);
+            progress->setFormat("%p% used");
+            rowLayout->addLayout(labels);
+            rowLayout->addWidget(progress);
+            m_reportBudgetRowsLayout->addWidget(row);
+        }
+        if (m_reportBudgetRowsLayout->count() == 0)
+            m_reportBudgetRowsLayout->addWidget(makeLabel(
+                "No budgets match this account and period.", "panelHint"));
+    }
+    if (m_reportBudgetPanel)
+        m_reportBudgetPanel->setVisible(type == "Budget status");
+
+    if (m_reportTable->rowCount() == 0) {
+        add("No matching data", 0.0,
+            "Add transactions or budgets for this account and period.");
+        m_reportTable->item(0, 1)->setText("—");
+    }
+    m_reportSummary->setText(
+        QString("%1 · %2 · %3 transaction(s) in this period for the active account")
+            .arg(type, period).arg(activeTransactionCount));
+}
+
+QString MainWindow::formatMoney(double amount) const
+{
+    return formatCurrency(amount, m_numberFormat == "indian");
+}
+
+QString MainWindow::formatDate(const QString &isoDate) const
+{
+    const QDate date = QDate::fromString(isoDate, Qt::ISODate);
+    return date.isValid() ? date.toString(m_dateDisplayFormat) : isoDate;
+}
+
+void MainWindow::applyDisplayPreferences()
+{
+    if (m_settingsThemeCombo)
+        m_themePreference = m_settingsThemeCombo->currentData().toString();
+    if (m_settingsDateFormatCombo)
+        m_dateDisplayFormat = m_settingsDateFormatCombo->currentData().toString();
+    if (m_settingsNumberFormatCombo)
+        m_numberFormat = m_settingsNumberFormatCombo->currentData().toString();
+    if (m_settingsReportPeriodCombo)
+        m_defaultReportPeriod = m_settingsReportPeriodCombo->currentData().toString();
+    if (m_settingsDuplicatePolicyCombo)
+        m_importDuplicatePolicy = m_settingsDuplicatePolicyCombo->currentData().toString();
+
+    QSettings settings;
+    settings.setValue("settings/theme", m_themePreference);
+    settings.setValue("settings/dateFormat", m_dateDisplayFormat);
+    settings.setValue("settings/numberFormat", m_numberFormat);
+    settings.setValue("settings/defaultReportPeriod", m_defaultReportPeriod);
+    settings.setValue("settings/importDuplicatePolicy", m_importDuplicatePolicy);
+
+    if (m_reportPeriodCombo && m_reportPeriodCombo->currentText() != m_defaultReportPeriod)
+        m_reportPeriodCombo->setCurrentText(m_defaultReportPeriod);
+
+    applyStyles();
+    if (m_reportDonutChart)
+        m_reportDonutChart->setDarkMode(m_themePreference == "dark");
+    if (m_reportBarChart) {
+        m_reportBarChart->setDarkMode(m_themePreference == "dark");
+        m_reportBarChart->setIndianNumberFormat(m_numberFormat == "indian");
+    }
+    refreshAccountsTable();
+    refreshTransactionsTable();
+    refreshBudgetsTable();
+    refreshDashboard();
+    if (m_reportWasGenerated)
+        runReport();
+    if (m_statementTable) {
+        for (int row = 0; row < m_statementRows.size(); ++row) {
+            if (m_statementTable->item(row, 0))
+                m_statementTable->item(row, 0)->setText(formatDate(m_statementRows.at(row).date));
+            if (m_statementTable->item(row, 2))
+                m_statementTable->item(row, 2)->setText(formatMoney(m_statementRows.at(row).amount));
+            if (m_statementTable->item(row, 3)) {
+                const StatementRecord &record = m_statementRows.at(row);
+                m_statementTable->item(row, 3)->setText(!record.duplicate ? "Ready" :
+                    (m_importDuplicatePolicy == "skip" ? "Will skip" : "Possible duplicate"));
+            }
+        }
+    }
+    if (m_statusLabel)
+        m_statusLabel->setText("Settings saved on this device");
+}
+
+QWidget *MainWindow::buildSettingsPage()
+{
+    auto *page = new QWidget;
+    auto *pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 4, 0, 0);
+    auto *scroll = new QScrollArea;
+    scroll->setObjectName("settingsScroll");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto *content = new QWidget;
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(14);
+
+    auto *intro = new QFrame;
+    intro->setObjectName("contentPanel");
+    auto *introLayout = new QVBoxLayout(intro);
+    introLayout->setContentsMargins(20, 18, 20, 18);
+    introLayout->addWidget(makeLabel("Make PFBM yours", "panelTitle"));
+    auto *introText = makeLabel(
+        "Choose how the app looks and displays financial information. Changes are saved automatically on this device.",
+        "panelHint");
+    introText->setWordWrap(true);
+    introLayout->addWidget(introText);
+    layout->addWidget(intro);
+
+    m_settingsThemeCombo = new QComboBox;
+    m_settingsThemeCombo->addItem("Light", "light");
+    m_settingsThemeCombo->addItem("Dark", "dark");
+    m_settingsThemeCombo->setCurrentIndex(
+        qMax(0, m_settingsThemeCombo->findData(m_themePreference)));
+
+    m_settingsDateFormatCombo = new QComboBox;
+    m_settingsDateFormatCombo->addItem("DD/MM/YYYY  ·  28/10/2026", "dd/MM/yyyy");
+    m_settingsDateFormatCombo->addItem("YYYY-MM-DD  ·  2026-10-28", "yyyy-MM-dd");
+    m_settingsDateFormatCombo->addItem("D Mon YYYY  ·  28 Oct 2026", "d MMM yyyy");
+    m_settingsDateFormatCombo->setCurrentIndex(
+        qMax(0, m_settingsDateFormatCombo->findData(m_dateDisplayFormat)));
+
+    m_settingsNumberFormatCombo = new QComboBox;
+    m_settingsNumberFormatCombo->addItem("Indian grouping  ·  ₹ 1,23,456.78", "indian");
+    m_settingsNumberFormatCombo->addItem("Western grouping  ·  ₹ 123,456.78", "western");
+    m_settingsNumberFormatCombo->setCurrentIndex(
+        qMax(0, m_settingsNumberFormatCombo->findData(m_numberFormat)));
+
+    m_settingsReportPeriodCombo = new QComboBox;
+    m_settingsReportPeriodCombo->addItems({"This month", "Last month", "All time"});
+    m_settingsReportPeriodCombo->setCurrentText(m_defaultReportPeriod);
+
+    m_settingsDuplicatePolicyCombo = new QComboBox;
+    m_settingsDuplicatePolicyCombo->addItem("Flag for review", "flag");
+    m_settingsDuplicatePolicyCombo->addItem("Skip possible duplicates", "skip");
+    m_settingsDuplicatePolicyCombo->addItem("Import all rows", "import");
+    m_settingsDuplicatePolicyCombo->setCurrentIndex(
+        qMax(0, m_settingsDuplicatePolicyCombo->findData(m_importDuplicatePolicy)));
+
+    auto addSettingCard = [&](const QString &title, const QString &description,
+                              const QString &fieldLabel, QComboBox *control) {
+        auto *card = new QFrame;
+        card->setObjectName("contentPanel");
+        auto *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(18, 16, 18, 16);
+        cardLayout->setSpacing(6);
+        cardLayout->addWidget(makeLabel(title, "panelTitle"));
+        auto *hint = makeLabel(description, "panelHint");
+        hint->setWordWrap(true);
+        cardLayout->addWidget(hint);
+        auto *row = new QHBoxLayout;
+        row->addWidget(makeLabel(fieldLabel, "budgetRowTitle"), 1);
+        control->setMinimumWidth(250);
+        row->addWidget(control);
+        cardLayout->addLayout(row);
+        layout->addWidget(card);
+    };
+
+    addSettingCard("Appearance", "Switch between a bright workspace and a dark interface.",
+                   "Application theme", m_settingsThemeCombo);
+    addSettingCard("Date and number formats",
+                   "These choices affect displayed dates and rupee amounts; saved transaction dates and values are unchanged.",
+                   "Date format", m_settingsDateFormatCombo);
+    addSettingCard("Number grouping", "Choose Indian or Western digit grouping for displayed amounts.",
+                   "Amount format", m_settingsNumberFormatCombo);
+    addSettingCard("Reports", "Choose the period selected by default when you open Reports.",
+                   "Default report period", m_settingsReportPeriodCombo);
+    addSettingCard("CSV imports",
+                   "Possible duplicates match a date, description, amount, and transaction direction. Review flagged rows before confirming; repeated real purchases can still be legitimate.",
+                   "Duplicate handling", m_settingsDuplicatePolicyCombo);
+
+    auto *storageNote = makeLabel(
+        "Your active account is already remembered automatically. Account data stays in the local SQLite database. Backups and restores are managed on the separate Backup & restore page.",
+        "panelHint");
+    storageNote->setWordWrap(true);
+    layout->addWidget(storageNote);
+
+    auto *about = new QFrame;
+    about->setObjectName("contentPanel");
+    auto *aboutLayout = new QVBoxLayout(about);
+    aboutLayout->setContentsMargins(18, 14, 18, 14);
+    aboutLayout->addWidget(makeLabel("About PFBM", "panelTitle"));
+    aboutLayout->addWidget(makeLabel(
+        "Personal Finance & Budgeting Dashboard · local SQLite storage · JSON backups",
+        "panelHint"));
+    layout->addWidget(about);
+    layout->addStretch();
+
+    auto preferencesChanged = [this](int) { applyDisplayPreferences(); };
+    connect(m_settingsThemeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, preferencesChanged);
+    connect(m_settingsDateFormatCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, preferencesChanged);
+    connect(m_settingsNumberFormatCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, preferencesChanged);
+    connect(m_settingsReportPeriodCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, preferencesChanged);
+    connect(m_settingsDuplicatePolicyCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, preferencesChanged);
+    scroll->setWidget(content);
+    pageLayout->addWidget(scroll);
+    return page;
 }
 
 void MainWindow::refreshDashboard()
@@ -2318,17 +3246,55 @@ void MainWindow::refreshDashboard()
 
 QWidget *MainWindow::buildUtilitiesPage()
 {
-    auto *page=new QWidget; auto *layout=new QVBoxLayout(page); layout->setSpacing(12);
-    auto *panel=new QFrame; panel->setObjectName("contentPanel"); auto *f=new QVBoxLayout(panel);
-    f->addWidget(makeLabel("Data utilities", "panelTitle"));
-    auto *desc=makeLabel("Back up the current session to a JSON file, or restore a previously created PFBM backup. Utilities are kept separate from finance calculations.", "panelHint"); desc->setWordWrap(true); f->addWidget(desc);
-    auto *backup=new QPushButton("Back up data…"); backup->setObjectName("primaryActionButton");
-    auto *restore=new QPushButton("Restore backup…"); restore->setObjectName("secondaryActionButton");
-    auto *about=new QPushButton("About PFBM"); about->setObjectName("secondaryActionButton");
-    f->addWidget(backup); f->addWidget(restore); f->addWidget(about); layout->addWidget(panel); layout->addStretch();
-    connect(backup,&QPushButton::clicked,this,&MainWindow::backupData);
-    connect(restore,&QPushButton::clicked,this,&MainWindow::restoreData);
-    connect(about,&QPushButton::clicked,this,[this](){QMessageBox::information(this,"About PFBM","Personal Finance & Budgeting Dashboard\\nFrontend prototype\\nData is stored persistently in SQLite. JSON backup and restore are supported.");});
+    auto *page = new QWidget;
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 4, 0, 0);
+    layout->setSpacing(16);
+
+    auto *intro = new QFrame;
+    intro->setObjectName("contentPanel");
+    auto *introLayout = new QVBoxLayout(intro);
+    introLayout->setContentsMargins(20, 18, 20, 18);
+    introLayout->addWidget(makeLabel("Protect your financial data", "panelTitle"));
+    auto *description = makeLabel(
+        "Create a portable JSON backup of your SQLite data or restore a previous backup. Restoring replaces the current database after confirmation.",
+        "panelHint");
+    description->setWordWrap(true);
+    introLayout->addWidget(description);
+    layout->addWidget(intro);
+
+    auto *actions = new QHBoxLayout;
+    actions->setSpacing(14);
+    auto makeActionCard = [&](const QString &title, const QString &descriptionText,
+                              const QString &buttonText, const QString &objectName) {
+        auto *card = new QFrame;
+        card->setObjectName("contentPanel");
+        auto *cardLayout = new QVBoxLayout(card);
+        cardLayout->setContentsMargins(20, 20, 20, 20);
+        cardLayout->setSpacing(10);
+        cardLayout->addWidget(makeLabel(title, "panelTitle"));
+        auto *detail = makeLabel(descriptionText, "panelHint");
+        detail->setWordWrap(true);
+        cardLayout->addWidget(detail);
+        auto *button = new QPushButton(buttonText);
+        button->setObjectName(objectName);
+        button->setCursor(Qt::PointingHandCursor);
+        cardLayout->addWidget(button, 0, Qt::AlignLeft);
+        cardLayout->addStretch();
+        actions->addWidget(card, 1);
+        return button;
+    };
+
+    auto *backup = makeActionCard(
+        "Create a backup", "Save all accounts, transactions, and budgets to a JSON file.",
+        "Create backup", "primaryActionButton");
+    auto *restore = makeActionCard(
+        "Restore a backup", "Load a PFBM JSON backup. This replaces the current accounts, transactions, and budgets.",
+        "Choose backup to restore", "dangerActionButton");
+    layout->addLayout(actions);
+    layout->addStretch();
+    connect(backup, &QPushButton::clicked, this, &MainWindow::backupData);
+    connect(restore, &QPushButton::clicked, this, &MainWindow::restoreData);
     return page;
 }
 
@@ -2763,6 +3729,8 @@ void MainWindow::navigateTo(int pageIndex)
     } else if (pageIndex == 4) {
         refreshTransactionsTable();
         refreshBudgetsTable();
+        if (m_reportWasGenerated)
+            runReport();
     } else if (pageIndex == 5) {
         refreshAccountsTable();
     }
@@ -2792,15 +3760,19 @@ void MainWindow::navigateTo(int pageIndex)
 
 void MainWindow::applyStyles()
 {
-    setStyleSheet(R"(
+    QString styles = QString::fromUtf8(R"(
         QMainWindow, QWidget#centralSurface {
-            background: #f4f6fa;
+            background: #f6f8fb;
             color: #172033;
             font-family: "Segoe UI", "Arial";
             font-size: 10pt;
         }
+        QDialog {
+            background: #f6f8fb;
+            color: #172033;
+        }
         QWidget#sidebar {
-            background: #17243a;
+            background: #111c2f;
             color: #ffffff;
         }
         QLabel#brandMark {
@@ -2817,15 +3789,15 @@ void MainWindow::applyStyles()
         }
         QPushButton#navigationButton {
             text-align: left;
-            color: #d6deea;
+            color: #c5d0df;
             background: transparent;
             border: none;
-            border-radius: 8px;
-            padding: 11px 12px;
+            border-radius: 10px;
+            padding: 12px 14px;
             font-size: 10pt;
         }
         QPushButton#navigationButton:hover {
-            background: #263750;
+            background: #1c2c45;
             color: #ffffff;
         }
         QPushButton#navigationButton:checked {
@@ -2833,10 +3805,29 @@ void MainWindow::applyStyles()
             background: #365fce;
             font-weight: 700;
         }
-        QFrame#sidebarNote {
-            background: #22334d;
-            border: 1px solid #344963;
+        QPushButton {
+            color: #263750;
+            background: #ffffff;
+            border: 1px solid #d9e1ec;
             border-radius: 10px;
+            padding: 9px 15px;
+            min-height: 20px;
+            font-weight: 600;
+        }
+        QPushButton:hover {
+            background: #f0f5ff;
+            border-color: #a9bfeb;
+        }
+        QPushButton:pressed {
+            background: #e4edff;
+        }
+        QPushButton:focus {
+            border: 2px solid #4f7fe0;
+        }
+        QFrame#sidebarNote {
+            background: #1a2a42;
+            border: 1px solid #2c405b;
+            border-radius: 12px;
         }
         QLabel#sidebarNoteTitle {
             color: #ffffff;
@@ -2848,7 +3839,7 @@ void MainWindow::applyStyles()
         }
         QLabel#pageTitle {
             color: #172033;
-            font-size: 23pt;
+            font-size: 25pt;
             font-weight: 750;
         }
         QLabel#pageSubtitle, QLabel#panelHint, QLabel#metricDetail {
@@ -2875,10 +3866,22 @@ void MainWindow::applyStyles()
         QComboBox#activeAccountCombo:hover {
             border-color: #365fce;
         }
+        QComboBox, QLineEdit, QDateEdit, QDoubleSpinBox {
+            background: #ffffff;
+            color: #172033;
+            border: 1px solid #d9e1ec;
+            border-radius: 8px;
+            padding: 8px 10px;
+            min-height: 18px;
+            selection-background-color: #dbeafe;
+        }
+        QComboBox:focus, QLineEdit:focus, QDateEdit:focus, QDoubleSpinBox:focus {
+            border: 1px solid #4f7fe0;
+        }
         QFrame#welcomePanel {
-            background: #e9efff;
-            border: 1px solid #d8e2ff;
-            border-radius: 12px;
+            background: #edf3ff;
+            border: 1px solid #dbe7ff;
+            border-radius: 16px;
         }
         QLabel#welcomeTitle {
             color: #203a7c;
@@ -2891,8 +3894,8 @@ void MainWindow::applyStyles()
         }
         QFrame#metricCard, QFrame#contentPanel {
             background: #ffffff;
-            border: 1px solid #e4e9f1;
-            border-radius: 12px;
+            border: 1px solid #e6ebf2;
+            border-radius: 14px;
         }
         QLabel#metricCaption {
             color: #778398;
@@ -2941,7 +3944,7 @@ void MainWindow::applyStyles()
             color: #ffffff;
             background: #365fce;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 10px 13px;
             font-weight: 700;
         }
@@ -2950,7 +3953,7 @@ void MainWindow::applyStyles()
             color: #263750;
             background: #ffffff;
             border: 1px solid #dce3ed;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 10px 13px;
         }
         QPushButton#secondaryActionButton:hover { background: #edf2fa; }
@@ -2958,34 +3961,47 @@ void MainWindow::applyStyles()
             color: #a12a35;
             background: #fff1f1;
             border: 1px solid #f3d2d5;
-            border-radius: 8px;
+            border-radius: 10px;
             padding: 10px 13px;
         }
         QPushButton#dangerActionButton:hover { background: #ffe4e6; }
         QTableWidget#accountsTable {
             background: #ffffff;
             alternate-background-color: #f7f9fc;
-            border: 1px solid #e4e9f1;
-            border-radius: 10px;
-            gridline-color: #edf0f5;
+            border: 1px solid #e6ebf2;
+            border-radius: 12px;
+            gridline-color: #edf1f6;
             selection-background-color: #e7edff;
             selection-color: #172033;
         }
         QTableWidget#accountsTable QHeaderView::section {
-            background: #f4f6fa;
+            background: #f7f9fc;
+            color: #536176;
+            border: none;
+            border-bottom: 1px solid #e6ebf2;
+            padding: 11px 9px;
+            font-weight: 700;
+        }
+        QProgressBar {
+            background: #edf1f6;
             color: #526076;
             border: none;
-            border-bottom: 1px solid #e4e9f1;
-            padding: 10px 8px;
-            font-weight: 700;
+            border-radius: 6px;
+            min-height: 18px;
+            max-height: 20px;
+            text-align: center;
+        }
+        QProgressBar::chunk {
+            background: #3974df;
+            border-radius: 6px;
         }
         QLabel#fieldHint { color: #778398; font-size: 9pt; }
         QFrame#emptyStatePanel { background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 12px; }
         QLabel#emptyStateTitle { color: #172033; font-size: 15pt; font-weight: 700; }
-        QTableWidget#accountsTable::item { background: transparent; color: #263750; padding: 6px; border: none; }
-        QTableWidget#accountsTable::item:selected { background: #dce7ff; color: #172033; }
+        QTableWidget#accountsTable::item { background: transparent; color: #263750; padding: 8px; border: none; }
+        QTableWidget#accountsTable::item:selected { background: #dce8ff; color: #172033; }
         QTableWidget#accountsTable::item:focus { outline: none; }
-        QTableWidget#accountsTable QTableCornerButton::section { background: #f4f6fa; border: none; }
+        QTableWidget#accountsTable QTableCornerButton::section { background: #f7f9fc; border: none; }
         QPushButton:disabled { color: #9aa4b2; background: #f0f2f5; border-color: #e2e6ec; }
         QLabel#statusLabel {
             color: #7b8799;
@@ -2993,4 +4009,120 @@ void MainWindow::applyStyles()
             padding-top: 5px;
         }
     )");
+
+    if (m_themePreference == "dark") {
+        styles += QString::fromUtf8(R"(
+            QMainWindow, QWidget#centralSurface {
+                background: #0c1422;
+                color: #e6edf7;
+            }
+            QDialog { background: #0c1422; color: #e6edf7; }
+            QWidget#sidebar { background: #080f1b; }
+            QFrame#contentPanel, QFrame#metricCard, QFrame#emptyStatePanel {
+                background: #121e30;
+                border-color: #26374d;
+            }
+            QFrame#welcomePanel {
+                background: #142442;
+                border-color: #263d63;
+            }
+            QLabel#pageTitle, QLabel#metricValue, QLabel#panelTitle,
+            QLabel#placeholderTitle, QLabel#emptyStateTitle,
+            QLabel#budgetRowTitle { color: #edf3fc; }
+            QLabel#metricCaption { color: #91a2b9; }
+            QLabel#pageSubtitle, QLabel#panelHint, QLabel#metricDetail,
+            QLabel#fieldHint, QLabel#budgetRowValue, QLabel#statusLabel,
+            QLabel#placeholderDescription { color: #a4b2c5; }
+            QLabel#welcomeTitle { color: #d7e5ff; }
+            QLabel#welcomeText { color: #b6c8e5; }
+            QLabel#periodTag, QLabel#placeholderTag {
+                color: #c5d8ff;
+                background: #1d3153;
+            }
+            QComboBox, QLineEdit, QDateEdit, QDoubleSpinBox {
+                color: #e6edf7;
+                background: #0e1929;
+                border-color: #34465f;
+                selection-background-color: #315fca;
+            }
+            QComboBox#activeAccountCombo {
+                color: #e6edf7;
+                background: #101c2e;
+                border-color: #34465f;
+            }
+            QPushButton {
+                color: #dce6f4;
+                background: #17253a;
+                border-color: #33465f;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+                background: #203451;
+                border-color: #5478b2;
+            }
+            QPushButton:pressed { background: #29436a; }
+            QPushButton#primaryActionButton {
+                color: #ffffff;
+                background: #3974df;
+                border-color: #3974df;
+            }
+            QPushButton#primaryActionButton:hover { background: #4a86f4; }
+            QPushButton#secondaryActionButton {
+                color: #dce6f4;
+                background: #17253a;
+                border-color: #33465f;
+            }
+            QPushButton#dangerActionButton {
+                color: #ffc2c2;
+                background: #3a2028;
+                border-color: #69404b;
+            }
+            QTableWidget#accountsTable {
+                color: #dce6f4;
+                background: #0f1a2a;
+                alternate-background-color: #132033;
+                border-color: #26374d;
+                gridline-color: #26374d;
+                selection-background-color: #263e65;
+                selection-color: #ffffff;
+            }
+            QTableWidget#accountsTable QHeaderView::section {
+                color: #c4d0e0;
+                background: #17253a;
+                border-bottom-color: #2a3c53;
+            }
+            QTableWidget#accountsTable::item { color: #dce6f4; }
+            QTableWidget#accountsTable::item:selected {
+                color: #ffffff;
+                background: #29446e;
+            }
+            QTableWidget#accountsTable QTableCornerButton::section {
+                background: #17253a;
+            }
+            QScrollArea#settingsScroll {
+                background: transparent;
+                border: none;
+            }
+            QScrollArea#settingsScroll QWidget#qt_scrollarea_viewport {
+                background: transparent;
+            }
+            QProgressBar {
+                color: #dce6f4;
+                background: #26364b;
+            }
+            QProgressBar::chunk { background: #4c88f0; }
+            QFrame#sidebarNote {
+                background: #111e30;
+                border-color: #2b3d55;
+            }
+            QLabel#sidebarNoteBody { color: #b4c0d1; }
+            QPushButton:disabled {
+                color: #718096;
+                background: #1b2738;
+                border-color: #2b3749;
+            }
+        )");
+    }
+
+    setStyleSheet(styles);
 }
