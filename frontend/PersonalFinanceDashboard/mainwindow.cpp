@@ -157,7 +157,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_pages->addWidget(buildReportsPage());
     m_pages->addWidget(buildImportStatementsPage());
     m_pages->addWidget(buildUtilitiesPage());
-    m_pages->addWidget(buildUtilitiesPage());
+    m_pages->addWidget(buildPlaceholderPage(
+        "Settings",
+        "Settings are not available yet. Your data is stored in the application data directory."));
 
     mainLayout->addWidget(m_pages, 1);
 
@@ -2254,6 +2256,8 @@ void MainWindow::runReport()
     else if(type=="Budget status"){
         for (const auto &b : m_budgets) {
             if (m_activeAccountId <= 0 || b.accountId != m_activeAccountId)
+                continue;
+            if (period != "All time" && b.month != (period == "This month" ? thisMonth : lastMonth))
                 continue;
             double spent = 0;
             for (const auto &t : m_transactions) {
