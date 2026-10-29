@@ -29,6 +29,7 @@
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QWidget>
+#include <QPalette>
 #include <QFileDialog>
 #include <QFile>
 #include <QFileInfo>
@@ -926,6 +927,7 @@ void MainWindow::createAccount()
     nameHint->setWordWrap(true);
     auto *typeCombo = new QComboBox(&dialog);
     typeCombo->addItems({"Savings account", "Cash / Wallet", "Current account", "Credit card", "Other"});
+    styleComboBoxPopup(typeCombo);
     auto *typeHint = makeLabel(
         "Choose the option that best describes this account. For everyday cash, choose Cash / Wallet.",
         "fieldHint");
@@ -1061,6 +1063,7 @@ void MainWindow::editAccount()
     nameEdit->setPlaceholderText("e.g. SBI Savings or My Wallet");
     auto *typeCombo = new QComboBox(&dialog);
     typeCombo->addItems({"Savings account", "Cash / Wallet", "Current account", "Credit card", "Other"});
+    styleComboBoxPopup(typeCombo);
     typeCombo->setCurrentText(original.type == "Savings" ? "Savings account" : original.type == "Cash" ? "Cash / Wallet" : original.type == "Current" ? "Current account" : original.type);
     auto *balanceSpin = new QDoubleSpinBox(&dialog);
     balanceSpin->setLocale(m_numberFormat == "indian"
@@ -2158,6 +2161,7 @@ void MainWindow::addTransaction(bool income)
     category->setEditable(true);
     category->addItems(income ? QStringList{"Salary", "Allowance", "Interest", "Other"} :
                                  QStringList{"Food & groceries", "Transport", "Housing", "Entertainment", "Health", "Education", "Other"});
+    styleComboBoxPopup(category);
     auto *amount = new QDoubleSpinBox;
     amount->setLocale(m_numberFormat == "indian"
         ? QLocale(QLocale::English, QLocale::India)
@@ -2167,6 +2171,7 @@ void MainWindow::addTransaction(bool income)
     amount->setPrefix("₹ ");
     auto *account = new QComboBox;
     for (const auto &a : m_accounts) account->addItem(a.name, a.id);
+    styleComboBoxPopup(account);
     const int activeAccountIndex = account->findData(m_activeAccountId);
     if (activeAccountIndex >= 0)
         account->setCurrentIndex(activeAccountIndex);
@@ -2261,6 +2266,7 @@ void MainWindow::editTransaction()
     auto *amount = new QDoubleSpinBox; amount->setLocale(m_numberFormat == "indian" ? QLocale(QLocale::English, QLocale::India) : QLocale(QLocale::English, QLocale::UnitedStates)); amount->setRange(0.01, 999999999.99); amount->setDecimals(2); amount->setPrefix("₹ "); amount->setValue(t.amount);
     auto *account = new QComboBox;
     for (const auto &a : m_accounts) account->addItem(a.name, a.id);
+    styleComboBoxPopup(account);
     account->setCurrentIndex(qMax(0, account->findData(m_activeAccountId)));
     account->setEnabled(false);
     account->setToolTip(
@@ -2495,6 +2501,7 @@ void MainWindow::addBudget()
     account->addItem("Select an account...", 0);
     for (const auto &item : m_accounts)
         account->addItem(item.name, item.id);
+    styleComboBoxPopup(account);
     const int activeAccountIndex = account->findData(m_activeAccountId);
     if (activeAccountIndex >= 0)
         account->setCurrentIndex(activeAccountIndex);
@@ -2507,6 +2514,7 @@ void MainWindow::addBudget()
     category->addItems({
         "Food & groceries", "Transport", "Housing", "Entertainment",
         "Health", "Education", "Utilities", "Other"});
+    styleComboBoxPopup(category);
 
     auto *limit = new QDoubleSpinBox;
     limit->setLocale(m_numberFormat == "indian"
@@ -2613,6 +2621,7 @@ void MainWindow::editBudget()
     auto *account = new QComboBox;
     for (const auto &item : m_accounts)
         account->addItem(item.name, item.id);
+    styleComboBoxPopup(account);
     const int accountIndex = account->findData(m_activeAccountId);
     if (accountIndex >= 0)
         account->setCurrentIndex(accountIndex);
@@ -3758,6 +3767,62 @@ void MainWindow::navigateTo(int pageIndex)
         m_navigationGroup->button(pageIndex)->setChecked(true);
 }
 
+void MainWindow::styleComboBoxPopup(QComboBox *combo) const
+{
+    if (!combo)
+        return;
+
+    const bool dark = m_themePreference == "dark";
+    const QColor background = dark ? QColor("#101c2e") : QColor("#ffffff");
+    const QColor text = dark ? QColor("#e6edf7") : QColor("#172033");
+    const QColor border = dark ? QColor("#34465f") : QColor("#d9e1ec");
+    const QColor selectedBackground = dark ? QColor("#315fca") : QColor("#dbeafe");
+    const QColor hoverBackground = dark ? QColor("#203451") : QColor("#edf3ff");
+    const QColor selectedText = dark ? QColor("#ffffff") : QColor("#172033");
+
+    auto *view = combo->view();
+    QPalette palette = view->palette();
+    for (const QPalette::ColorGroup group : {
+             QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
+        palette.setColor(group, QPalette::Base, background);
+        palette.setColor(group, QPalette::Window, background);
+        palette.setColor(group, QPalette::Text, text);
+        palette.setColor(group, QPalette::WindowText, text);
+        palette.setColor(group, QPalette::Highlight, selectedBackground);
+        palette.setColor(group, QPalette::HighlightedText, selectedText);
+    }
+    view->setPalette(palette);
+    view->setAutoFillBackground(true);
+    view->setStyleSheet(QString::fromUtf8(R"(
+        QAbstractItemView {
+            background-color: %1;
+            color: %2;
+            border: 1px solid %3;
+            outline: 0;
+        }
+        QAbstractItemView::item {
+            color: %2;
+            min-height: 24px;
+            padding: 6px 10px;
+        }
+        QAbstractItemView::item:hover {
+            color: %6;
+            background-color: %5;
+        }
+        QAbstractItemView::item:selected {
+            color: %6;
+            background-color: %4;
+        }
+    )").arg(background.name(), text.name(), border.name(),
+            selectedBackground.name(), hoverBackground.name(), selectedText.name()));
+
+    QWidget *popup = view->window();
+    if (popup && popup != combo) {
+        popup->setPalette(palette);
+        popup->setAutoFillBackground(true);
+    }
+}
+
 void MainWindow::applyStyles()
 {
     QString styles = QString::fromUtf8(R"(
@@ -3874,6 +3939,21 @@ void MainWindow::applyStyles()
             padding: 8px 10px;
             min-height: 18px;
             selection-background-color: #dbeafe;
+        }
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 28px;
+            border: none;
+            border-left: 1px solid #d9e1ec;
+            border-top-right-radius: 8px;
+            border-bottom-right-radius: 8px;
+            background: transparent;
+        }
+        QComboBox::down-arrow {
+            image: url(:/icons/chevron-down-light.xpm);
+            width: 9px;
+            height: 6px;
         }
         QComboBox:focus, QLineEdit:focus, QDateEdit:focus, QDoubleSpinBox:focus {
             border: 1px solid #4f7fe0;
@@ -4045,6 +4125,15 @@ void MainWindow::applyStyles()
                 border-color: #34465f;
                 selection-background-color: #315fca;
             }
+            QComboBox:focus {
+                border-color: #4c88f0;
+            }
+            QComboBox::drop-down {
+                border-left-color: #34465f;
+            }
+            QComboBox::down-arrow {
+                image: url(:/icons/chevron-down-dark.xpm);
+            }
             QComboBox#activeAccountCombo {
                 color: #e6edf7;
                 background: #101c2e;
@@ -4125,4 +4214,6 @@ void MainWindow::applyStyles()
     }
 
     setStyleSheet(styles);
+    for (auto *combo : findChildren<QComboBox *>())
+        styleComboBoxPopup(combo);
 }

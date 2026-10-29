@@ -78,6 +78,7 @@ private:
     QString formatMoney(double amount) const;
     QString formatDate(const QString &isoDate) const;
     void applyDisplayPreferences();
+    void styleComboBoxPopup(QComboBox *combo) const;
     void backupData();
     void restoreData();
     void applyStyles();

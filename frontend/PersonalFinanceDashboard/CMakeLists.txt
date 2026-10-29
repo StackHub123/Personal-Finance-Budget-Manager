@@ -21,6 +21,7 @@ qt_add_executable(PersonalFinanceFrontend
     main.cpp
     mainwindow.h
     mainwindow.cpp
+    resources.qrc
     "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100/sqlite3.c"
 
     # Domain models
