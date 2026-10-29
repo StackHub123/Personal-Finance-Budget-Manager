@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "models/Account.h"
+#include "services/LegacyDataMigrationService.h"
 #include <vector>
 #include <stdexcept>
 #include <limits>
@@ -108,6 +109,19 @@ QString formatCurrency(double amount, bool indianGrouping, int decimals = 2)
         ? QLocale(QLocale::English, QLocale::India)
         : QLocale(QLocale::English, QLocale::UnitedStates);
     return QString("₹ %1").arg(locale.toString(amount, 'f', decimals));
+}
+
+bool hasExistingFinanceSchema(DatabaseManager &database)
+{
+    sqlite3_stmt *statement = nullptr;
+    const char *sql = "SELECT count(*) FROM sqlite_master WHERE type='table' "
+                      "AND name IN ('accounts','transactions','budgets');";
+    if (sqlite3_prepare_v2(database.handle(), sql, -1, &statement, nullptr) != SQLITE_OK)
+        return false;
+    const int result = sqlite3_step(statement);
+    const bool valid = result == SQLITE_ROW && sqlite3_column_int(statement, 0) == 3;
+    sqlite3_finalize(statement);
+    return valid;
 }
 
 QDate parseStatementDate(const QString &value)
@@ -358,7 +372,9 @@ private:
     bool m_darkMode = false;
 };
 
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(const AuthenticatedUser &user,
+                       const QString &databasePath,
+                       QWidget *parent)
     : QMainWindow(parent),
       m_accountRepository(m_database),
       m_transactionRepository(m_database),
@@ -367,17 +383,29 @@ MainWindow::MainWindow(QWidget *parent)
       m_transactionService(m_accountRepository, m_transactionRepository),
       m_budgetService(m_budgetRepository, m_transactionRepository),
       m_backupRestoreService(m_database, m_accountRepository,
-                             m_transactionRepository, m_budgetRepository)
+                             m_transactionRepository, m_budgetRepository),
+      m_authenticatedUser(user)
 {
     QCoreApplication::setOrganizationName("PFBM");
     QCoreApplication::setApplicationName("PersonalFinanceDashboard");
     QSettings settings;
-    m_activeAccountId = settings.value("dashboard/activeAccountId", 0).toInt();
+    auto userSetting = [&](const QString &key, const QVariant &defaultValue) {
+        const QString scopedKey = userSettingKey(key);
+        if (settings.contains(scopedKey))
+            return settings.value(scopedKey);
+        if (settings.contains(key)) {
+            const QVariant legacyValue = settings.value(key);
+            settings.setValue(scopedKey, legacyValue);
+            return legacyValue;
+        }
+        return defaultValue;
+    };
+    m_activeAccountId = userSetting("dashboard/activeAccountId", 0).toInt();
     m_themePreference = settings.value("settings/theme", "light").toString();
-    m_dateDisplayFormat = settings.value("settings/dateFormat", "yyyy-MM-dd").toString();
-    m_numberFormat = settings.value("settings/numberFormat", "indian").toString();
-    m_defaultReportPeriod = settings.value("settings/defaultReportPeriod", "This month").toString();
-    m_importDuplicatePolicy = settings.value("settings/importDuplicatePolicy", "flag").toString();
+    m_dateDisplayFormat = userSetting("settings/dateFormat", "yyyy-MM-dd").toString();
+    m_numberFormat = userSetting("settings/numberFormat", "indian").toString();
+    m_defaultReportPeriod = userSetting("settings/defaultReportPeriod", "This month").toString();
+    m_importDuplicatePolicy = userSetting("settings/importDuplicatePolicy", "flag").toString();
     if (m_themePreference != "light" && m_themePreference != "dark")
         m_themePreference = "light";
     if (m_dateDisplayFormat != "dd/MM/yyyy" && m_dateDisplayFormat != "yyyy-MM-dd" &&
@@ -392,19 +420,19 @@ MainWindow::MainWindow(QWidget *parent)
         m_importDuplicatePolicy != "import")
         m_importDuplicatePolicy = "flag";
 
-    const QString dataDirectory =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-
-    if (dataDirectory.isEmpty() || !QDir().mkpath(dataDirectory)) {
-        m_databaseError = "Could not create the application data directory.";
+    if (databasePath.trimmed().isEmpty()) {
+        m_databaseError = "The signed-in profile has no financial database location.";
     } else {
-        const QString databasePath =
-            QDir(dataDirectory).filePath("personal_finance.db");
-
+        const bool databaseAlreadyExists = QFileInfo::exists(databasePath);
         std::string error;
-
-        if (!m_database.open(databasePath.toStdString(), error)) {
+        if (databaseAlreadyExists && QFileInfo(databasePath).size() == 0) {
+            m_databaseError = "The profile database is empty or damaged. "
+                              "No replacement database was created.";
+        } else if (!m_database.open(databasePath.toStdString(), error)) {
             m_databaseError = QString::fromStdString(error);
+        } else if (databaseAlreadyExists && !hasExistingFinanceSchema(m_database)) {
+            m_databaseError = "The existing profile database is not a recognizable PFBM database. "
+                              "It was left unchanged.";
         } else if (!m_database.initializeSchema(error)) {
             m_databaseError = QString::fromStdString(error);
         } else {
@@ -553,7 +581,7 @@ QWidget *MainWindow::buildDashboardPage()
     }
     const QString welcomeMessage = m_activeAccountId > 0
         ? QString("Showing finances for %1. Dashboard figures, recent activity and budget usage are limited to this account. Export a backup from Utilities to keep a copy.").arg(activeAccountName)
-        : "Create an account to begin tracking your finances.";
+        : "Add a financial account to begin tracking your finances.";
     auto *welcomeText = makeLabel(welcomeMessage, "welcomeText");
     welcomeText->setWordWrap(true); wl->addWidget(welcomeText); layout->addWidget(welcome);
 
@@ -664,9 +692,9 @@ QWidget *MainWindow::buildAccountsPage()
     auto *introLayout = new QVBoxLayout(intro);
     introLayout->setContentsMargins(20, 18, 20, 18);
     introLayout->setSpacing(6);
-    introLayout->addWidget(makeLabel("Account management", "panelTitle"));
+    introLayout->addWidget(makeLabel("My financial accounts", "panelTitle"));
     auto *hint = makeLabel(
-        "Add the places where you keep or manage money, such as a bank account or cash wallet.",
+        "Manage the bank accounts and wallets that belong to your signed-in profile.",
         "panelHint");
     hint->setWordWrap(true);
     introLayout->addWidget(hint);
@@ -674,23 +702,18 @@ QWidget *MainWindow::buildAccountsPage()
 
     auto *actions = new QHBoxLayout;
     actions->setSpacing(10);
-    auto *createButton = new QPushButton("＋  Create account");
+    auto *createButton = new QPushButton("＋  Add financial account");
     createButton->setObjectName("primaryActionButton");
     createButton->setCursor(Qt::PointingHandCursor);
     auto *viewButton = new QPushButton("Refresh accounts");
     viewButton->setObjectName("secondaryActionButton");
     viewButton->setCursor(Qt::PointingHandCursor);
-    m_editAccountButton = new QPushButton("Edit selected");
-    m_editAccountButton->setObjectName("secondaryActionButton");
-    m_editAccountButton->setCursor(Qt::PointingHandCursor);
-    m_editAccountButton->setEnabled(false);
-    m_deleteAccountButton = new QPushButton("Delete selected");
+    m_deleteAccountButton = new QPushButton("Delete financial account");
     m_deleteAccountButton->setObjectName("dangerActionButton");
     m_deleteAccountButton->setCursor(Qt::PointingHandCursor);
     m_deleteAccountButton->setEnabled(false);
     actions->addWidget(createButton);
     actions->addWidget(viewButton);
-    actions->addWidget(m_editAccountButton);
     actions->addWidget(m_deleteAccountButton);
     actions->addStretch();
     layout->addLayout(actions);
@@ -700,25 +723,28 @@ QWidget *MainWindow::buildAccountsPage()
     auto *emptyLayout = new QVBoxLayout(m_emptyState);
     emptyLayout->setContentsMargins(24, 28, 24, 28);
     emptyLayout->setSpacing(8);
-    auto *emptyTitle = makeLabel("Let's add your first account", "emptyStateTitle");
+    auto *emptyTitle = makeLabel("Let's add your first financial account", "emptyStateTitle");
     auto *emptyText = makeLabel(
-        "An account is a place where you keep money, such as your bank account or wallet. "
+        "A financial account is a bank account or wallet you use to manage money. "
         "Add one to start tracking your finances.", "panelHint");
     emptyText->setWordWrap(true);
     emptyText->setAlignment(Qt::AlignCenter);
     emptyTitle->setAlignment(Qt::AlignCenter);
     emptyLayout->addWidget(emptyTitle);
     emptyLayout->addWidget(emptyText);
-    auto *emptyCreateButton = new QPushButton("Create my first account");
+    auto *emptyCreateButton = new QPushButton("Add my first financial account");
     emptyCreateButton->setObjectName("primaryActionButton");
     emptyCreateButton->setCursor(Qt::PointingHandCursor);
     emptyLayout->addWidget(emptyCreateButton, 0, Qt::AlignHCenter);
     layout->addWidget(m_emptyState);
 
+    m_accountsSummaryLabel = makeLabel({}, "panelHint");
+    layout->addWidget(m_accountsSummaryLabel);
+
     m_accountsTable = new QTableWidget(0, 4);
     m_accountsTable->setObjectName("accountsTable");
     m_accountsTable->setHorizontalHeaderLabels(
-        {"Account ID", "Account name", "Account type", "Starting balance"});
+        {"Account ID", "Account name", "Account type", "Current balance"});
     m_accountsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_accountsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_accountsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
@@ -731,20 +757,42 @@ QWidget *MainWindow::buildAccountsPage()
     m_accountsTable->setMinimumHeight(260);
     layout->addWidget(m_accountsTable, 1);
 
-    auto *storageNote = makeLabel(
-        "Account data is saved locally in the SQLite database.", "panelHint");
-    storageNote->setWordWrap(true);
-    layout->addWidget(storageNote);
+    auto *details = new QFrame;
+    details->setObjectName("contentPanel");
+    auto *detailsLayout = new QVBoxLayout(details);
+    detailsLayout->setContentsMargins(16, 12, 16, 12);
+    detailsLayout->addWidget(makeLabel("Account details", "panelTitle"));
+    m_accountDetailsLabel = makeLabel(
+        "Select a financial account to view its read-only details.", "panelHint");
+    m_accountDetailsLabel->setWordWrap(true);
+    detailsLayout->addWidget(m_accountDetailsLabel);
+    layout->addWidget(details);
 
     connect(createButton, &QPushButton::clicked, this, &MainWindow::createAccount);
     connect(emptyCreateButton, &QPushButton::clicked, this, &MainWindow::createAccount);
     connect(viewButton, &QPushButton::clicked, this, &MainWindow::viewAccounts);
-    connect(m_editAccountButton, &QPushButton::clicked, this, &MainWindow::editAccount);
     connect(m_deleteAccountButton, &QPushButton::clicked, this, &MainWindow::deleteAccount);
     connect(m_accountsTable, &QTableWidget::itemSelectionChanged, this, [this]() {
         const bool selected = m_accountsTable && m_accountsTable->currentRow() >= 0;
-        if (m_editAccountButton) m_editAccountButton->setEnabled(selected);
         if (m_deleteAccountButton) m_deleteAccountButton->setEnabled(selected);
+        if (!selected) {
+            if (m_accountDetailsLabel)
+                m_accountDetailsLabel->setText(
+                    "Select a financial account to view its read-only details.");
+            return;
+        }
+        const int id = m_accountsTable->item(m_accountsTable->currentRow(), 0)->text().toInt();
+        for (const AccountRecord &account : m_accounts) {
+            if (account.id != id)
+                continue;
+            const QString active = account.id == m_activeAccountId
+                ? " · Active for dashboard" : QString();
+            m_accountDetailsLabel->setText(
+                QString("%1 · %2%3\nCurrent balance: %4 · Opening balance: %5")
+                    .arg(account.name, account.type, active,
+                         formatMoney(account.currentBalance), formatMoney(account.balance)));
+            break;
+        }
     });
 
     refreshAccountsTable();
@@ -780,9 +828,14 @@ void MainWindow::refreshAccountsTable()
                 record.id = account.getId();
                 record.name = QString::fromStdString(account.getName());
                 record.type = QString::fromStdString(account.getType());
-                record.balance =
-                    static_cast<double>(account.getInitialBalancePaise())
-                    / 100.0;
+                record.balance = static_cast<double>(
+                    account.getInitialBalancePaise()) / 100.0;
+                std::string balanceError;
+                const auto currentBalance = m_financeService
+                    .calculateAccountBalancePaise(account.getId(), balanceError);
+                record.currentBalance = currentBalance
+                    ? static_cast<double>(*currentBalance) / 100.0
+                    : record.balance;
 
                 m_accounts.append(record);
 
@@ -807,7 +860,7 @@ void MainWindow::refreshAccountsTable()
             row, 2, new QTableWidgetItem(account.type));
 
         auto *balanceItem = new QTableWidgetItem(
-            formatMoney(account.balance));
+            formatMoney(account.currentBalance));
         balanceItem->setTextAlignment(
             Qt::AlignRight | Qt::AlignVCenter);
         m_accountsTable->setItem(row, 3, balanceItem);
@@ -819,11 +872,22 @@ void MainWindow::refreshAccountsTable()
     if (m_emptyState)
         m_emptyState->setVisible(!hasAccounts);
 
-    if (m_editAccountButton)
-        m_editAccountButton->setEnabled(false);
-
     if (m_deleteAccountButton)
         m_deleteAccountButton->setEnabled(false);
+
+    std::int64_t totalBalancePaise = 0;
+    for (const AccountRecord &account : m_accounts)
+        totalBalancePaise += static_cast<std::int64_t>(
+            std::llround(account.currentBalance * 100.0));
+    if (m_accountsSummaryLabel) {
+        m_accountsSummaryLabel->setText(
+            QString("%1 financial account(s) · Combined current balance: %2")
+                .arg(m_accounts.size()).arg(formatMoney(
+                    static_cast<double>(totalBalancePaise) / 100.0)));
+    }
+    if (m_accountDetailsLabel)
+        m_accountDetailsLabel->setText(
+            "Select a financial account to view its read-only details.");
 
     refreshActiveAccountCombo();
     refreshStatementAccountCombo();
@@ -842,7 +906,7 @@ void MainWindow::refreshActiveAccountCombo()
         m_activeAccountCombo->setEnabled(false);
         m_activeAccountId = 0;
         QSettings settings;
-        settings.setValue("dashboard/activeAccountId", 0);
+        settings.setValue(userSettingKey("dashboard/activeAccountId"), 0);
         return;
     }
 
@@ -858,7 +922,7 @@ void MainWindow::refreshActiveAccountCombo()
     m_activeAccountId = m_activeAccountCombo->currentData().toInt();
 
     QSettings settings;
-    settings.setValue("dashboard/activeAccountId", m_activeAccountId);
+    settings.setValue(userSettingKey("dashboard/activeAccountId"), m_activeAccountId);
 }
 
 void MainWindow::activeAccountChanged(int index)
@@ -877,7 +941,7 @@ void MainWindow::activeAccountChanged(int index)
 
     m_activeAccountId = selectedAccountId;
     QSettings settings;
-    settings.setValue("dashboard/activeAccountId", m_activeAccountId);
+    settings.setValue(userSettingKey("dashboard/activeAccountId"), m_activeAccountId);
 
     refreshAccountScopedViews();
 
@@ -910,11 +974,11 @@ void MainWindow::showAccountMessage(const QString &message, bool success)
 void MainWindow::createAccount()
 {
     QDialog dialog(this);
-    dialog.setWindowTitle("Create an account");
+    dialog.setWindowTitle("Add a financial account");
     dialog.setMinimumWidth(460);
 
     auto *layout = new QVBoxLayout(&dialog);
-    auto *intro = makeLabel("Add a place where you keep or manage money.", "panelHint");
+    auto *intro = makeLabel("Add a bank account, cash wallet, or other place where you manage money.", "panelHint");
     intro->setWordWrap(true);
     layout->addWidget(intro);
     auto *form = new QFormLayout;
@@ -943,9 +1007,9 @@ void MainWindow::createAccount()
         "You don't need to enter past transactions.", "fieldHint");
     balanceHint->setWordWrap(true);
 
-    form->addRow("Account name", nameEdit);
+    form->addRow("Financial account name", nameEdit);
     form->addRow("Where do you keep this money?", typeCombo);
-    form->addRow("Starting amount", balanceSpin);
+    form->addRow("Opening balance", balanceSpin);
     layout->addLayout(form);
     layout->addWidget(nameHint);
     layout->addWidget(typeHint);
@@ -1022,122 +1086,13 @@ void MainWindow::viewAccounts()
     refreshAccountsTable();
 
     if (m_accounts.isEmpty()) {
-        if (m_statusLabel) m_statusLabel->setText("No accounts yet. Create your first account to get started.");
+        if (m_statusLabel) m_statusLabel->setText("No financial accounts yet. Add one to get started.");
         return;
     }
 
     showAccountMessage(
-        QString("Accounts loaded successfully. Total accounts: %1.").arg(m_accounts.size()),
+        QString("Financial accounts loaded. Total accounts: %1.").arg(m_accounts.size()),
         true);
-}
-
-void MainWindow::editAccount()
-{
-    if (!m_accountsTable || m_accountsTable->currentRow() < 0) return;
-    const int row = m_accountsTable->currentRow();
-    bool idOk = false;
-    const int id = m_accountsTable->item(row, 0)->text().toInt(&idOk);
-    if (!idOk) {
-        showAccountMessage("We couldn't identify that account. Please select it again.", false);
-        return;
-    }
-    int accountIndex = -1;
-    for (int i = 0; i < m_accounts.size(); ++i) {
-        if (m_accounts.at(i).id == id) { accountIndex = i; break; }
-    }
-    if (accountIndex < 0) {
-        showAccountMessage("That account could not be found. Refresh the list and try again.", false);
-        return;
-    }
-    const AccountRecord original = m_accounts.at(accountIndex);
-    QDialog dialog(this);
-    dialog.setWindowTitle("Edit account");
-    dialog.setMinimumWidth(460);
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *intro = makeLabel("Update the details for this account.", "panelHint");
-    layout->addWidget(intro);
-    auto *form = new QFormLayout;
-    auto *nameEdit = new QLineEdit(original.name, &dialog);
-    nameEdit->setPlaceholderText("e.g. SBI Savings or My Wallet");
-    auto *typeCombo = new QComboBox(&dialog);
-    typeCombo->addItems({"Savings account", "Cash / Wallet", "Current account", "Credit card", "Other"});
-    typeCombo->setCurrentText(original.type == "Savings" ? "Savings account" : original.type == "Cash" ? "Cash / Wallet" : original.type == "Current" ? "Current account" : original.type);
-    auto *balanceSpin = new QDoubleSpinBox(&dialog);
-    balanceSpin->setLocale(m_numberFormat == "indian"
-        ? QLocale(QLocale::English, QLocale::India)
-        : QLocale(QLocale::English, QLocale::UnitedStates));
-    balanceSpin->setRange(0.0, 1000000000000.0);
-    balanceSpin->setDecimals(2);
-    balanceSpin->setPrefix("₹ ");
-    balanceSpin->setValue(original.balance);
-    form->addRow("Account name", nameEdit);
-    form->addRow("Where do you keep this money?", typeCombo);
-    form->addRow("Starting amount", balanceSpin);
-    layout->addLayout(form);
-    auto *hint = makeLabel("Starting amount means the balance when you began tracking this account.", "fieldHint");
-    hint->setWordWrap(true);
-    layout->addWidget(hint);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]() {
-        const QString name = nameEdit->text().trimmed();
-        if (name.isEmpty()) {
-            QMessageBox::warning(&dialog, "Account name needed", "Please enter a name for this account.");
-            nameEdit->setFocus();
-            return;
-        }
-        for (const AccountRecord &account : m_accounts) {
-            if (account.id != id && account.name.compare(name, Qt::CaseInsensitive) == 0) {
-                QMessageBox::warning(&dialog, "Name already used",
-                                     "You already have an account with this name. Choose a different name.");
-                nameEdit->setFocus();
-                nameEdit->selectAll();
-                return;
-            }
-        }
-        dialog.accept();
-    });
-    if (dialog.exec() != QDialog::Accepted) return;
-    if (!m_databaseReady) {
-        showAccountMessage(
-            QString("Database unavailable: %1").arg(m_databaseError),
-            false);
-        return;
-    }
-
-    const QString name = nameEdit->text().trimmed();
-    const QString type = typeCombo->currentText();
-
-    const auto balancePaise = static_cast<std::int64_t>(
-        std::llround(balanceSpin->value() * 100.0));
-
-    try {
-        Account updatedAccount(
-            id,
-            name.toStdString(),
-            type.toStdString(),
-            balancePaise);
-
-        std::string error;
-
-        if (!m_accountRepository.update(updatedAccount, error)) {
-            showAccountMessage(
-                QString("Could not update account: %1")
-                    .arg(QString::fromStdString(error)),
-                false);
-            return;
-        }
-
-        refreshAccountsTable();
-        refreshAccountScopedViews();
-
-        showAccountMessage(
-            QString("'%1' was updated successfully.").arg(name), true);
-    } catch (const std::exception &exception) {
-        showAccountMessage(
-            QString("Invalid account: %1").arg(exception.what()), false);
-    }
 }
 
 void MainWindow::deleteAccount()
@@ -1168,7 +1123,9 @@ void MainWindow::deleteAccount()
     const QString name = m_accounts.at(accountIndex).name;
     const auto answer = QMessageBox::question(
         this, "Confirm deletion",
-        QString("Delete '%1'? This action cannot be undone.").arg(name),
+        QString("Delete financial account '%1'? Accounts with linked transactions "
+                "or budgets cannot be deleted, to protect your financial history.")
+            .arg(name),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 
     if (answer != QMessageBox::Yes)
@@ -1185,8 +1142,8 @@ void MainWindow::deleteAccount()
 
     if (!m_accountRepository.remove(id, error)) {
         showAccountMessage(
-            QString("Could not delete account: %1")
-                .arg(QString::fromStdString(error)),
+            "This financial account still has linked transactions or budgets. "
+            "Remove those records first; the account and its history were preserved.",
             false);
         return;
     }
@@ -1419,8 +1376,8 @@ QStringList MainWindow::splitCsvLine(const QString &line, QChar delimiter) const
 void MainWindow::chooseStatementFile()
 {
     if (m_accounts.isEmpty()) {
-        QMessageBox::information(this, "Create an account first",
-            "No account exists yet. Go to Accounts and create the account these transactions belong to.");
+        QMessageBox::information(this, "Add a financial account first",
+            "No financial account exists yet. Go to Accounts and add the account these transactions belong to.");
         return;
     }
     if (!m_statementAccountCombo || m_statementAccountCombo->currentIndex() <= 0) {
@@ -1760,7 +1717,7 @@ void MainWindow::confirmStatementImport()
         || m_statementAccountCombo->currentIndex() <= 0) {
         QMessageBox::warning(
             this, "Select an account",
-            "Create an account and select it before importing a statement.");
+            "Add a financial account and select it before importing a statement.");
         return;
     }
 
@@ -2075,6 +2032,12 @@ void MainWindow::refreshTransactionsTable()
         record.type = QString::fromStdString(account.getType());
         record.balance =
             static_cast<double>(account.getInitialBalancePaise()) / 100.0;
+        std::string balanceError;
+        const auto currentBalance = m_financeService
+            .calculateAccountBalancePaise(account.getId(), balanceError);
+        record.currentBalance = currentBalance
+            ? static_cast<double>(*currentBalance) / 100.0
+            : record.balance;
 
         m_accounts.append(record);
         if (record.id >= m_nextAccountId)
@@ -2141,7 +2104,8 @@ void MainWindow::refreshTransactionsTable()
 void MainWindow::addTransaction(bool income)
 {
     if (m_accounts.isEmpty()) {
-        QMessageBox::information(this, "Create an account first", "Create an account before recording a transaction.");
+        QMessageBox::information(this, "Add a financial account first",
+                                 "Add a financial account before recording a transaction.");
         navigateTo(2);
         return;
     }
@@ -2482,8 +2446,8 @@ void MainWindow::addBudget()
 {
     if (m_accounts.isEmpty()) {
         QMessageBox::information(
-            this, "Create an account first",
-            "Create an account before setting a budget.");
+            this, "Add a financial account first",
+            "Add a financial account before setting a budget.");
         return;
     }
 
@@ -2606,8 +2570,8 @@ void MainWindow::editBudget()
 
     if (m_activeAccountId <= 0) {
         QMessageBox::information(
-            this, "Create an account first",
-            "Create an account and select it as the active account before editing a budget.");
+            this, "Add a financial account first",
+            "Add a financial account and select it as the active account before editing a budget.");
         return;
     }
     auto *account = new QComboBox;
@@ -2811,7 +2775,8 @@ QWidget *MainWindow::buildReportsPage()
         if (index < 0 || !m_reportPeriodCombo)
             return;
         m_defaultReportPeriod = m_reportPeriodCombo->currentText();
-        QSettings().setValue("settings/defaultReportPeriod", m_defaultReportPeriod);
+        QSettings().setValue(userSettingKey("settings/defaultReportPeriod"),
+                             m_defaultReportPeriod);
         if (m_settingsReportPeriodCombo)
             m_settingsReportPeriodCombo->setCurrentText(m_defaultReportPeriod);
         if (m_reportWasGenerated)
@@ -3042,6 +3007,11 @@ QString MainWindow::formatDate(const QString &isoDate) const
     return date.isValid() ? date.toString(m_dateDisplayFormat) : isoDate;
 }
 
+QString MainWindow::userSettingKey(const QString &key) const
+{
+    return QStringLiteral("users/%1/%2").arg(m_authenticatedUser.id()).arg(key);
+}
+
 void MainWindow::applyDisplayPreferences()
 {
     if (m_settingsThemeCombo)
@@ -3057,10 +3027,10 @@ void MainWindow::applyDisplayPreferences()
 
     QSettings settings;
     settings.setValue("settings/theme", m_themePreference);
-    settings.setValue("settings/dateFormat", m_dateDisplayFormat);
-    settings.setValue("settings/numberFormat", m_numberFormat);
-    settings.setValue("settings/defaultReportPeriod", m_defaultReportPeriod);
-    settings.setValue("settings/importDuplicatePolicy", m_importDuplicatePolicy);
+    settings.setValue(userSettingKey("settings/dateFormat"), m_dateDisplayFormat);
+    settings.setValue(userSettingKey("settings/numberFormat"), m_numberFormat);
+    settings.setValue(userSettingKey("settings/defaultReportPeriod"), m_defaultReportPeriod);
+    settings.setValue(userSettingKey("settings/importDuplicatePolicy"), m_importDuplicatePolicy);
 
     if (m_reportPeriodCombo && m_reportPeriodCombo->currentText() != m_defaultReportPeriod)
         m_reportPeriodCombo->setCurrentText(m_defaultReportPeriod);
@@ -3120,6 +3090,33 @@ QWidget *MainWindow::buildSettingsPage()
     introText->setWordWrap(true);
     introLayout->addWidget(introText);
     layout->addWidget(intro);
+
+    auto *profile = new QFrame;
+    profile->setObjectName("contentPanel");
+    auto *profileLayout = new QHBoxLayout(profile);
+    profileLayout->setContentsMargins(18, 14, 18, 14);
+    auto *profileText = new QVBoxLayout;
+    profileText->addWidget(makeLabel("Signed-in profile", "panelTitle"));
+    m_signedInEmailLabel = makeLabel(m_authenticatedUser.email(), "panelHint");
+    profileText->addWidget(m_signedInEmailLabel);
+    auto *recoveryNote = makeLabel(
+        "This local app does not send password reset emails. Keep your password safe.",
+        "panelHint");
+    recoveryNote->setWordWrap(true);
+    profileText->addWidget(recoveryNote);
+    profileLayout->addLayout(profileText, 1);
+    m_logoutButton = new QPushButton("Log out");
+    m_logoutButton->setObjectName("secondaryActionButton");
+    m_logoutButton->setCursor(Qt::PointingHandCursor);
+    profileLayout->addWidget(m_logoutButton, 0, Qt::AlignTop);
+    layout->addWidget(profile);
+    connect(m_logoutButton, &QPushButton::clicked, this, [this]() {
+        const auto answer = QMessageBox::question(
+            this, "Log out", "Log out of this PFBM profile? Your financial records will remain saved.",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer == QMessageBox::Yes)
+            emit logoutRequested();
+    });
 
     m_settingsThemeCombo = new QComboBox;
     m_settingsThemeCombo->addItem("Light", "light");
@@ -3756,6 +3753,22 @@ void MainWindow::navigateTo(int pageIndex)
 
     if (m_navigationGroup && m_navigationGroup->button(pageIndex))
         m_navigationGroup->button(pageIndex)->setChecked(true);
+}
+
+bool MainWindow::importLegacyData(const QString &legacyDatabasePath, QString &error)
+{
+    if (!m_databaseReady) {
+        error = QStringLiteral("The signed-in profile database is unavailable.");
+        return false;
+    }
+    if (!LegacyDataMigrationService::importInto(
+            legacyDatabasePath, m_database, m_accountRepository,
+            m_transactionRepository, m_budgetRepository, error))
+        return false;
+    refreshAccountsTable();
+    refreshAccountScopedViews();
+    error.clear();
+    return true;
 }
 
 void MainWindow::applyStyles()

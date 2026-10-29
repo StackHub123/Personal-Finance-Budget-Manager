@@ -9,6 +9,7 @@
 #include "services/TransactionService.h"
 #include "services/BudgetService.h"
 #include "services/BackupRestoreService.h"
+#include "models/AuthenticatedUser.h"
 
 #include <QMainWindow>
 #include <QVector>
@@ -34,7 +35,15 @@ class MainWindow final : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(const AuthenticatedUser &user,
+                        const QString &databasePath,
+                        QWidget *parent = nullptr);
+    bool isDatabaseReady() const noexcept { return m_databaseReady; }
+    QString databaseError() const { return m_databaseError; }
+    bool importLegacyData(const QString &legacyDatabasePath, QString &error);
+
+signals:
+    void logoutRequested();
 
 private:
     QWidget *buildSidebar();
@@ -57,7 +66,6 @@ private:
     void refreshAccountScopedViews();
     void createAccount();
     void viewAccounts();
-    void editAccount();
     void deleteAccount();
     void showAccountMessage(const QString &message, bool success);
     QStringList splitCsvLine(const QString &line, QChar delimiter = ',') const;
@@ -78,6 +86,7 @@ private:
     QString formatMoney(double amount) const;
     QString formatDate(const QString &isoDate) const;
     void applyDisplayPreferences();
+    QString userSettingKey(const QString &key) const;
     void backupData();
     void restoreData();
     void applyStyles();
@@ -90,6 +99,7 @@ private:
     TransactionService m_transactionService;
     BudgetService m_budgetService;
     BackupRestoreService m_backupRestoreService;
+    AuthenticatedUser m_authenticatedUser;
     bool m_databaseReady = false;
     QString m_databaseError;
 
@@ -111,8 +121,11 @@ private:
     QComboBox *m_settingsDuplicatePolicyCombo = nullptr;
     QTableWidget *m_accountsTable = nullptr;
     QFrame *m_emptyState = nullptr;
-    QPushButton *m_editAccountButton = nullptr;
     QPushButton *m_deleteAccountButton = nullptr;
+    QLabel *m_accountsSummaryLabel = nullptr;
+    QLabel *m_accountDetailsLabel = nullptr;
+    QLabel *m_signedInEmailLabel = nullptr;
+    QPushButton *m_logoutButton = nullptr;
     QLabel *m_statementPathLabel = nullptr;
     QLabel *m_statementAccountNotice = nullptr;
     QComboBox *m_statementAccountCombo = nullptr;
@@ -143,7 +156,8 @@ private:
         int id = 0;
         QString name;
         QString type;
-        double balance = 0.0;
+        double balance = 0.0; // opening balance, used with transaction aggregates
+        double currentBalance = 0.0;
     };
 
     QVector<AccountRecord> m_accounts;

@@ -9,6 +9,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 6.2 REQUIRED COMPONENTS Widgets)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 
 # Project root: Personal-Finance-Budget-Manager/
 get_filename_component(
@@ -19,6 +20,8 @@ get_filename_component(
 
 qt_add_executable(PersonalFinanceFrontend
     main.cpp
+    authwindow.h
+    authwindow.cpp
     mainwindow.h
     mainwindow.cpp
     "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100/sqlite3.c"
@@ -32,6 +35,8 @@ qt_add_executable(PersonalFinanceFrontend
 
     "${PROJECT_ROOT}/include/models/Budget.h"
     "${PROJECT_ROOT}/src/models/Budget.cpp"
+
+    "${PROJECT_ROOT}/include/models/AuthenticatedUser.h"
 
     # SQLite database manager
     "${PROJECT_ROOT}/include/database/DatabaseManager.h"
@@ -47,6 +52,9 @@ qt_add_executable(PersonalFinanceFrontend
     "${PROJECT_ROOT}/include/repositories/BudgetRepository.h"
     "${PROJECT_ROOT}/src/repositories/BudgetRepository.cpp"
 
+    "${PROJECT_ROOT}/include/repositories/UserRepository.h"
+    "${PROJECT_ROOT}/src/repositories/UserRepository.cpp"
+
     # Business logic
     "${PROJECT_ROOT}/include/services/FinanceService.h"
     "${PROJECT_ROOT}/src/services/FinanceService.cpp"
@@ -56,6 +64,12 @@ qt_add_executable(PersonalFinanceFrontend
     "${PROJECT_ROOT}/src/services/TransactionService.cpp"
     "${PROJECT_ROOT}/include/services/BudgetService.h"
     "${PROJECT_ROOT}/src/services/BudgetService.cpp"
+    "${PROJECT_ROOT}/include/services/AuthService.h"
+    "${PROJECT_ROOT}/src/services/AuthService.cpp"
+    "${PROJECT_ROOT}/include/services/AppDataPaths.h"
+    "${PROJECT_ROOT}/src/services/AppDataPaths.cpp"
+    "${PROJECT_ROOT}/include/services/LegacyDataMigrationService.h"
+    "${PROJECT_ROOT}/src/services/LegacyDataMigrationService.cpp"
 )
 
 target_include_directories(PersonalFinanceFrontend
@@ -67,4 +81,80 @@ target_include_directories(PersonalFinanceFrontend
 target_link_libraries(PersonalFinanceFrontend
     PRIVATE
         Qt6::Widgets
+        OpenSSL::Crypto
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_library(pfbm_test_backend STATIC
+        "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100/sqlite3.c"
+        "${PROJECT_ROOT}/src/models/Account.cpp"
+        "${PROJECT_ROOT}/src/models/Transaction.cpp"
+        "${PROJECT_ROOT}/src/models/Budget.cpp"
+        "${PROJECT_ROOT}/src/database/DatabaseManager.cpp"
+        "${PROJECT_ROOT}/src/repositories/AccountRepository.cpp"
+        "${PROJECT_ROOT}/src/repositories/TransactionRepository.cpp"
+        "${PROJECT_ROOT}/src/repositories/BudgetRepository.cpp"
+        "${PROJECT_ROOT}/src/services/FinanceService.cpp"
+        "${PROJECT_ROOT}/src/services/TransactionService.cpp"
+        "${PROJECT_ROOT}/src/services/BudgetService.cpp"
+        "${PROJECT_ROOT}/src/services/BackupRestoreService.cpp"
+    )
+    target_include_directories(pfbm_test_backend PUBLIC
+        "${PROJECT_ROOT}/include"
+        "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100"
+    )
+    foreach(test_name IN ITEMS
+            account transaction budget database_manager
+            account_repository transaction_repository budget_repository
+            finance_service transaction_service budget_service
+            backup_restore_service)
+        add_executable(test_${test_name} "${PROJECT_ROOT}/tests/test_${test_name}.cpp")
+        target_link_libraries(test_${test_name} PRIVATE pfbm_test_backend)
+        add_test(NAME test_${test_name} COMMAND test_${test_name})
+    endforeach()
+
+    add_executable(authentication_integration_tests
+        tests/test_authentication_integration.cpp
+        authwindow.h
+        authwindow.cpp
+        "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100/sqlite3.c"
+        "${PROJECT_ROOT}/include/models/Account.h"
+        "${PROJECT_ROOT}/src/models/Account.cpp"
+        "${PROJECT_ROOT}/include/models/Transaction.h"
+        "${PROJECT_ROOT}/src/models/Transaction.cpp"
+        "${PROJECT_ROOT}/include/models/Budget.h"
+        "${PROJECT_ROOT}/src/models/Budget.cpp"
+        "${PROJECT_ROOT}/include/models/AuthenticatedUser.h"
+        "${PROJECT_ROOT}/include/database/DatabaseManager.h"
+        "${PROJECT_ROOT}/src/database/DatabaseManager.cpp"
+        "${PROJECT_ROOT}/include/repositories/UserRepository.h"
+        "${PROJECT_ROOT}/src/repositories/UserRepository.cpp"
+        "${PROJECT_ROOT}/include/repositories/AccountRepository.h"
+        "${PROJECT_ROOT}/src/repositories/AccountRepository.cpp"
+        "${PROJECT_ROOT}/include/repositories/TransactionRepository.h"
+        "${PROJECT_ROOT}/src/repositories/TransactionRepository.cpp"
+        "${PROJECT_ROOT}/include/repositories/BudgetRepository.h"
+        "${PROJECT_ROOT}/src/repositories/BudgetRepository.cpp"
+        "${PROJECT_ROOT}/include/services/AuthService.h"
+        "${PROJECT_ROOT}/src/services/AuthService.cpp"
+        "${PROJECT_ROOT}/include/services/AppDataPaths.h"
+        "${PROJECT_ROOT}/src/services/AppDataPaths.cpp"
+        "${PROJECT_ROOT}/include/services/BackupRestoreService.h"
+        "${PROJECT_ROOT}/src/services/BackupRestoreService.cpp"
+        "${PROJECT_ROOT}/include/services/LegacyDataMigrationService.h"
+        "${PROJECT_ROOT}/src/services/LegacyDataMigrationService.cpp"
+    )
+    target_include_directories(authentication_integration_tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${PROJECT_ROOT}/include"
+        "${PROJECT_ROOT}/third_party/sqlite/sqlite-amalgamation-3540100"
+    )
+    target_link_libraries(authentication_integration_tests PRIVATE
+        Qt6::Widgets OpenSSL::Crypto
+    )
+    add_test(NAME authentication_integration_tests
+             COMMAND authentication_integration_tests)
+    set_tests_properties(authentication_integration_tests PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
